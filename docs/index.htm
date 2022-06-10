@@ -1,0 +1,283 @@
+<!DOCTYPE html
+        PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <!--    <title> <br>  </title>-->
+    <title>SparseNeuS: Fast Generalizable Neural Surface Reconstruction from Sparse views</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+
+    <!-- Meta tags for Zotero grab citation -->
+    <meta name="citation_title"
+          content="SparseNeuS: Fast Generalizable Neural Surface Reconstruction from Sparse views">
+    <meta name="citation_author" content="Long, Xiaoxiao">
+    <meta name="citation_author" content="Lin, Cheng">
+    <meta name="citation_author" content="Wang, Peng">
+    <meta name="citation_author" content="Komura, Taku">
+    <meta name="citation_author" content="Wang, Wenping">
+    <meta name="citation_publication_date" content="2022">
+    <meta name="citation_conference_title" content="ARXIV">
+    <meta name="citation_pdf_url" content="https://arxiv.org/pdf/2011.13118">
+
+    <meta name="robots" content="index,follow">
+    <meta name="description"
+          content="
+		We introduce {\em SparseNeuS}, a novel neural rendering based method for the task of surface reconstruction from multi-view images.
+This task becomes more difficult when only sparse images are provided as input,
+ a scenario where existing neural reconstruction approaches usually produce incomplete or distorted results.
+Moreover, their inability of generalizing to unseen new scenes impedes their application in practice.
+Contrarily, {\em SparseNeuS} can generalize to new scenes and work well with sparse images (as few as 2 or 3).
+{\em SparseNeuS} adopts signed distance function (SDF) as the surface representation,
+and learns generalizable priors from image features by introducing \textit{geometry encoding} volumes for generic surface prediction.
+Moreover, several strategies are introduced to effectively leverage sparse views for high-quality reconstruction,
+including 1) a multi-level geometry reasoning framework to recover the surfaces in a coarse-to-fine manner;
+ 2) a multi-scale color blending scheme for more reliable color prediction;
+ 3) a consistency-aware fine-tuning scheme to control the inconsistent regions caused by occlusion and noise.
+ Extensive experiments demonstrate that our approach not only outperforms the state-of-the-art methods,
+ but also exhibits good efficiency, generalizability, and flexibility.
+		">
+    <link rel="author" href="https://www.xxlong.site/"/>
+
+
+    <!-- Fonts and stuff -->
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:400italic,700italic,800italic,400,700,800'
+          rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="css/project.css" media="screen"/>
+    <link rel="stylesheet" type="text/css" media="screen" href="css/iconize.css"/>
+    <script src="js/google-code-prettify/prettify.js"></script>
+</head>
+
+
+<body>
+
+<div id="content">
+    <div id="content-inner">
+        <div class="section logos" style="text-align:center">
+            <a href="https://www.hku.hk/" target="_blank"><IMG src="./logos/Logo_HKU.png" height="35"
+                                                               border="0"></a></td>
+            <a href="https://www.tencent.com/" target="_blank"><IMG src="./logos/Logo_tencent_games.png" height="35"
+                                                                    border="0"></a></td>
+            <a href="https://www.tamu.edu/" target="_blank"><IMG src="./logos/logo_TAMU.png" height="35"
+                                                                 border="0"></a></td>
+        </div>
+
+        <div class="section head">
+
+            <h1>SparseNeuS: Fast Generalizable Neural Surface Reconstruction from Sparse views </h1>
+
+            <div class="authors">
+                <a href="https://www.xxlong.site/" target="_blank">Xiaoxiao Long</a><sup> 1</sup>&#160;&#160;
+                <a href="https://clinplayer.github.io/" target="_blank">Cheng Lin</a><sup> 2</sup>&#160;&#160;
+                Peng Wang<sup> 1</sup>&#160;&#160;
+                <a href="https://homepages.inf.ed.ac.uk/tkomura/" target="_blank">Taku Komura</a><sup>1</sup>&#160;&#160;
+                <a href="https://www.cs.hku.hk/people/academic-staff/wenping/">Wenping Wang</a><sup> 3</sup>&#160;&#160;
+            </div>
+
+            <div class="affiliations">
+                <sup>1</sup><a href="https://www.hku.hk/" target="_blank">The University of Hong Kong</a>&#160;&#160;
+                <sup>2</sup><a href="https://www.tencent.com/" target="_blank">Tencent Games</a>&#160;&#160;
+                <sup>3</sup><a href="https://www.tamu.edu/" target="_blank">Texas A&M University</a>&#160;&#160;
+            </div>
+
+            <div class="venue"><a href="https://arxiv.org/" target="_blank">ARXIV 2022 </a></div>
+
+            <div class="section downloads">
+                <!--<h2>Downloads</h2>-->
+                <center>
+                    <ul>
+                        <li class="grid">
+                            <div class="griditem">
+                                <a href="https://arxiv.org/pdf/2011.13118" target="_blank"
+                                   class="imageLink"><img
+                                        src="./images/pdf.png"></a><br/>
+                                <a href="https://arxiv.org/pdf/2011.13118">Paper</a>
+                            </div>
+                        </li>
+                        <li class="grid">
+                            <div class="griditem">
+                                <a href="https://github.com/xxlong0/SparseNeuS" target="_blank"
+                                   class="imageLink"><img
+                                        src="./images/data_ico.png"></a><br/>
+                                <a href="https://github.com/xxlong0/SparseNeuS">Code</a>
+
+                            </div>
+                        </li>
+
+                    </ul>
+                </center>
+            </div>
+        </div>
+
+        <div class="section abstract">
+            <h2>Abstract</h2><br>
+            <div class="row" style="margin-bottom:5px">
+                <div class="col" style="text-align:center">
+                    <img src="./images/teaser.jpg" style="width:1100px;height:auto;"
+                         style="width:70%; margin-bottom:20px">
+
+                </div>
+
+            </div>
+
+            <p>
+                We introduce SparseNeuS, a novel neural rendering based method for the task of surface reconstruction
+                from multi-view images.
+                This task becomes more difficult when only sparse images are provided as input,
+                a scenario where existing neural reconstruction approaches usually produce incomplete or distorted
+                results.
+                Moreover, their inability of generalizing to unseen new scenes impedes their application in practice.
+                Contrarily, SparseNeuS can generalize to new scenes and work well with sparse images (as few as 2 or 3).
+                SparseNeuS adopts signed distance function (SDF) as the surface representation,
+                and learns generalizable priors from image features by introducing geometry encoding volumes for generic
+                surface prediction.
+                Moreover, several strategies are introduced to effectively leverage sparse views for high-quality
+                reconstruction,
+                including 1) a multi-level geometry reasoning framework to recover the surfaces in a coarse-to-fine
+                manner;
+                2) a multi-scale color blending scheme for more reliable color prediction;
+                3) a consistency-aware fine-tuning scheme to control the inconsistent regions caused by occlusion and
+                noise.
+                Extensive experiments demonstrate that our approach not only outperforms the state-of-the-art methods,
+                but also exhibits good efficiency, generalizability, and flexibility.
+            </p>
+            <!--            </p>-->
+        </div>
+
+
+        <div class="section pipeline">
+            <h2>Pipeline</h2><br>
+            <div class="row" style="margin-bottom:5px">
+                <div class="col" style="text-align:center">
+                    <img src="./images/pipeline.jpg" style="width:1000px;height:auto;"
+                         style="width:70%; margin-bottom:20px">
+
+                </div>
+
+            </div>
+
+            <p>
+                The overview of SparseNeuS.
+                The cascaded geometry reasoning scheme first constructs a coarse volume that encodes relatively
+                global features to obtain the fundamental geometry,
+                and then constructs a fine volume guided by the coarse level to refine the geometry.
+                Finally, a consistency-aware fine-tuning strategy is used to add subtle geometry details,
+                thus yielding high-quality reconstructions with fine-grained surfaces.
+                Specially, a multi-scale color blending module is leveraged for more reliable color prediction.
+            </p>
+            <!--            </p>-->
+        </div>
+
+        <!--        full video-->
+        <!--        <div class="section abstract">-->
+        <!--            <h2>Full Video</h2><br>-->
+        <!--            <center>-->
+        <!--                &lt;!&ndash; <iframe width="640" height="360" src="data/video.mp4" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> &ndash;&gt;-->
+        <!--                <iframe width="640" height="360" src="https://www.youtube.com/embed/RFqPwH7QFEI" frameborder="0"-->
+        <!--                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"-->
+        <!--                        allowfullscreen></iframe>-->
+        <!--                &lt;!&ndash;iframe src="./data/video.mp4" allow="autoplay; encrypted-media" webkitallowfullscreen="" mozallowfullscreen="" allowfullscreen="" width="560" height="315" frameborder="0"></iframe&ndash;&gt;-->
+        <!--                &lt;!&ndash;<p style="font-size:11px; text-align:center">-->
+        <!--                Download Video: <a href="data/video.mp4" target="_blank">HD</a> (MP4, 111 MB)-->
+        <!--            </p>&ndash;&gt;-->
+        <!--            </center>-->
+        <!--        </div>-->
+
+        <div class="section abstract">
+            <h2>Qualitative comparision on DTU</h2>
+            <p>
+                With the strong generalizability learned from DTU dataset, our model can generalize to new scenes and
+                generate reasonable geometries by a network forward inference.
+                By the proposed consistency-aware fine-tuning scheme,
+                the reconstructed results are largely improved compared those of inference and get rid of noisy and
+                distorted background geometries.
+            </p>
+            <center>
+                <!-- <iframe width="640" height="360" src="./mp4/composite3.mp4" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> -->
+                <video width="60%" playsinline="" autoplay="autoplay" loop="loop" preload="" muted="">
+                    <source src="./videos/case1_dtu.mp4" type="video/mp4">
+                </video>
+                <video width="60%" playsinline="" autoplay="autoplay" loop="loop" preload="" muted="">
+                    <source src="./videos/case2_dtu.mp4" type="video/mp4">
+                </video>
+            </center>
+        </div>
+
+        <div class="section abstract">
+            <h2>Qualitative comparision on BlendedMVS</h2>
+            <p>
+                Although our model is only trained on DTU, our model still generalizes well to unseen scenes of
+                BlendedMVS dataset.
+            </p>
+            <center>
+                <!-- <iframe width="640" height="360" src="./mp4/composite3.mp4" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> -->
+                <video width="60%" playsinline="" autoplay="autoplay" loop="loop" preload="" muted="">
+                    <source src="./videos/case1_bmvs.mp4" type="video/mp4">
+                </video>
+                <video width="60%" playsinline="" autoplay="autoplay" loop="loop" preload="" muted="">
+                    <source src="./videos/case2_bmvs.mp4" type="video/mp4">
+                </video>
+            </center>
+        </div>
+
+        <div class="section abstract">
+            <h2>Novel view synthesis after per-scene fine-tuning</h2>
+            <center>
+                <!-- <iframe width="640" height="360" src="./mp4/composite3.mp4" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> -->
+                <video width="60%" playsinline="" autoplay="autoplay" loop="loop" preload="" muted="">
+                    <source src="./videos/rendering_dtu_case1.mp4" type="video/mp4">
+                </video>
+                <video width="60%" playsinline="" autoplay="autoplay" loop="loop" preload="" muted="">
+                    <source src="./videos/rendering_dtu_case2.mp4" type="video/mp4">
+                </video>
+            </center>
+        </div>
+
+
+        <!--        <div class="section abstract">-->
+        <!--            <h2>Citation</h2>-->
+        <!--            <div class="section bibtex" style="text-align:left; margin-left: 40px; margin-right: 40px">-->
+        <!--					<pre>-->
+        <!--@article{long2021multi,-->
+        <!--  title={Multi-view Depth Estimation using Epipolar Spatio-Temporal Network},-->
+        <!--  author={Long, Xiaoxiao and Liu, Lingjie and Li, Wei and Theobalt, Christian and Wang, Wenping},-->
+        <!--  journal={CVPR},-->
+        <!--  year={2021}-->
+        <!--}-->
+        <!--            </div>-->
+        <!--        </div>-->
+
+
+        <!--div class="section acknowledgments">
+            <h2>Acknowledgments</h2>
+            <p>
+                This work was funded by the ERC Consolidator Grant 4DRepLy (770784).
+            </p>
+        </div-->
+
+        <!--<div class="section acknowledgments">
+            <h2>Useful Links</h2>
+            <p>
+                <a href="https://www.bilibili.com/video/BV1e7411c7kR?p=52">Talk (in Chinese) at GAMES Webinar</a>
+                <a href="http://irc.cs.sdu.edu.cn/2020-summer-school/video/7.18%20pm%20Lingjie%20Liu.mp4
+            </p>
+        </div-->
+
+        <div class="section">
+            <hr class="smooth">
+            This page is <a href="http://www.zotero.org" target="_blank">Zotero</a> translator friendly. Page last
+            updated
+            <script type="text/javascript">
+                var m = "This page was last updated: " + document.lastModified;
+                var p = m.length - 9;
+                document.writeln("<left>");
+                document.write(m.substring(p, 0) + ".");
+                document.writeln("</left>");
+            </script>
+            <!--            <a href="https://www.mpi-inf.mpg.de/imprint/">Imprint</a>. <a-->
+            <!--                href="https://data-protection.mpi-klsb.mpg.de/inf/gvv.mpi-inf.mpg.de/projects/">Data Protection</a>.-->
+        </div>
+    </div>
+</div>
+</body>
+</html>
