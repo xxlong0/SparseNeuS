@@ -467,7 +467,7 @@ class SparseNeuSRenderer(nn.Module):
                img_index=None,
                rays_uv=None,
                # * importance sample for second lod network
-               pre_sample=False,
+               pre_sample=False,  # no use here
                # * for clear foreground
                bg_ratio=0.0
                ):
