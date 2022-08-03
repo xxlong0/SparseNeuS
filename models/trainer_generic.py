@@ -107,10 +107,6 @@ class GenericTrainer(nn.Module):
             alpha_type='div',
             conf=self.conf)
 
-        # loss
-        self.synthesis_color_supervision = self.conf.get_bool('train.synthesis_color_supervision')
-        self.render_color = self.synthesis_color_supervision
-
         self.if_fix_lod0_networks = self.conf.get_bool('train.if_fix_lod0_networks')
 
         # sdf network weights
@@ -121,7 +117,6 @@ class GenericTrainer(nn.Module):
         self.bg_ratio = self.conf.get_float('train.bg_ratio', default=0.0)
 
         self.depth_criterion = DepthLoss()
-        self.depth_smooth_criterion = DepthSmoothLoss()
 
         # - DataParallel mode, cannot modify attributes in forward()
         # self.iter_step = 0
@@ -358,15 +353,9 @@ class GenericTrainer(nn.Module):
                  background_rgb=None,
                  alpha_inter_ratio_lod0=0.0,
                  alpha_inter_ratio_lod1=0.0,
-                 pre_hidden_units_lod0=None,
-                 pre_hidden_units_lod1=None,
                  iter_step=0,
                  chunk_size=512,
                  val_depth=False,
-                 gru_warmup=True,
-                 adaptive_ratio_lod0=0.0,
-                 adaptive_ratio_lod1=0.0,
-                 cost_adaptive_ratio_lod1=0.0
                  ):
         # * only support batch_size==1
         # ! attention: the list of string cannot be splited in DataParallel
@@ -728,6 +717,7 @@ class GenericTrainer(nn.Module):
 
     def cal_losses_sdf(self, render_out, sample_rays, iter_step=-1, lod=0):
 
+        # loss weight schedule; the regularization terms should be added in later training stage
         def get_weight(iter_step, weight):
             if lod == 1:
                 anneal_start = self.anneal_end if lod == 0 else self.anneal_end_lod1
