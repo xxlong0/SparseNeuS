@@ -531,7 +531,7 @@ class FinetuneOctreeSdfNetwork(nn.Module):
                  hidden_dim=128, activation='softplus',
                  regnet_d_out=8,
                  multires=6,
-                 if_mlp_rendering=True,
+                 if_fitted_rendering=True,
                  num_sdf_layers=4,
                  ):
         super(FinetuneOctreeSdfNetwork, self).__init__()
@@ -546,7 +546,7 @@ class FinetuneOctreeSdfNetwork(nn.Module):
 
         self.regnet_d_out = regnet_d_out
 
-        self.if_mlp_rendering = if_mlp_rendering
+        self.if_fitted_rendering = if_fitted_rendering
         self.multires = multires
         # d_in_embedding = self.regnet_d_out if self.pos_add_type == 'latent' else 3
         # self.pos_embedder = Embedding(d_in_embedding, self.multires)

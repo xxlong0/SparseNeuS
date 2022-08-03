@@ -82,8 +82,8 @@ class Projector():
                 img_wh=None,
                 query_img_idx=0,  # the index of the N_views dim for rendering
                 query_c2w=None,
-                pred_depth_maps=None,
-                pred_depth_masks=None
+                pred_depth_maps=None,   # no use here
+                pred_depth_masks=None   # no use here
                 ):
         """
         extract features of pts for rendering

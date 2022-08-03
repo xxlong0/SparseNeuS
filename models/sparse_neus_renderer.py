@@ -14,7 +14,6 @@ import trimesh
 from icecream import ic
 from models.render_utils import sample_pdf
 
-
 from models.projector import Projector
 from tsparse.torchsparse_utils import sparse_to_dense_channel
 
@@ -34,7 +33,6 @@ class SparseNeuSRenderer(nn.Module):
     warped by nn.Module to support DataParallel traning
     """
 
-    # ! add IBRNet to do generalized rendering
     def __init__(self,
                  rendering_network_outside,
                  sdf_network,
@@ -71,24 +69,17 @@ class SparseNeuSRenderer(nn.Module):
 
         self.ray_tracer = FastRenderer()  # ray_tracer to extract depth maps from sdf_volume
 
-        # - mlp_rendering ? when finetuning
+        # - fitted rendering or general rendering
         try:
-            self.if_mlp_rendering = self.sdf_network.if_mlp_rendering
-            self.mlp_rendering_type = self.sdf_network.renderer.type
+            self.if_fitted_rendering = self.sdf_network.if_fitted_rendering
         except:
-            self.if_mlp_rendering = False
-
-        # - rendering gradient off?
-        self.render_gradient_off = self.conf.get_bool('train.render_gradient_off', default=False)
+            self.if_fitted_rendering = False
 
     def up_sample(self, rays_o, rays_d, z_vals, sdf, n_importance, inv_variance,
                   conditional_valid_mask_volume=None):
         device = rays_o.device
         batch_size, n_samples = z_vals.shape
         pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]  # n_rays, n_samples, 3
-
-        # radius = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=False)
-        # inside_sphere = (radius[:, :-1] < 1.0) | (radius[:, 1:] < 1.0)
 
         if conditional_valid_mask_volume is not None:
             pts_mask = self.get_pts_mask_for_conditional_volume(pts.view(-1, 3), conditional_valid_mask_volume)
@@ -192,9 +183,9 @@ class SparseNeuSRenderer(nn.Module):
                     lod,
                     sdf_network,
                     rendering_network,
-                    background_alpha=None,  # - only contains sample larger than "far"
-                    background_sampled_color=None,  # - only contains sample larger than "far"
-                    background_rgb=None,
+                    background_alpha=None,  # - no use here
+                    background_sampled_color=None,  # - no use here
+                    background_rgb=None,  # - no use here
                     alpha_inter_ratio=0.0,
                     # * related to conditional feature
                     conditional_volume=None,
@@ -206,11 +197,13 @@ class SparseNeuSRenderer(nn.Module):
                     intrinsics=None,
                     img_wh=None,
                     query_c2w=None,  # - used for testing
-                    if_render_color=True,
-                    if_render_gradient=True,
+                    if_general_rendering=True,
+                    if_render_with_grad=True,
                     # * used for blending mlp rendering network
                     img_index=None,
-                    rays_uv=None
+                    rays_uv=None,
+                    # * used for clear bg and fg
+                    bg_num=0
                     ):
         device = rays_o.device
         N_rays = rays_o.shape[0]
@@ -257,69 +250,69 @@ class SparseNeuSRenderer(nn.Module):
         rendering_valid_mask_mlp = None
         sampled_color_patch = None
         rendering_patch_mask = None
-        if self.if_mlp_rendering:
-            if self.mlp_rendering_type == 'blending':
-                position_latent = sdf_nn_output['sampled_latent_scale%d' % lod]
-                sampled_color_mlp = torch.zeros([N_rays * n_samples, 3]).to(pts.dtype).to(device)
-                sampled_color_mlp_mask = torch.zeros([N_rays * n_samples, 1]).to(pts.dtype).to(device)
 
-                # - extract pixel
-                pts_pixel_color, pts_pixel_mask = self.patch_projector.pixel_warp(
-                    pts[pts_mask_bool][:, None, :], color_maps, intrinsics,
-                    w2cs, img_wh=None)  # [N_rays * n_samples,1, N_views,  3] , [N_rays*n_samples, 1, N_views]
-                pts_pixel_color = pts_pixel_color[:, 0, :, :]  # [N_rays * n_samples, N_views,  3]
-                pts_pixel_mask = pts_pixel_mask[:, 0, :]  # [N_rays*n_samples, N_views]
+        if self.if_fitted_rendering:  # used for fine-tuning
+            position_latent = sdf_nn_output['sampled_latent_scale%d' % lod]
+            sampled_color_mlp = torch.zeros([N_rays * n_samples, 3]).to(pts.dtype).to(device)
+            sampled_color_mlp_mask = torch.zeros([N_rays * n_samples, 1]).to(pts.dtype).to(device)
 
-                # - extract patch
-                if_patch_blending = False if rays_uv is None else True
-                pts_patch_color, pts_patch_mask = None, None
-                if if_patch_blending:
-                    pts_patch_color, pts_patch_mask = self.patch_projector.patch_warp(
-                        pts.reshape([N_rays, n_samples, 3]),
-                        rays_uv, gradients.reshape([N_rays, n_samples, 3]),
-                        color_maps,
-                        intrinsics[0], intrinsics,
-                        query_c2w[0], torch.inverse(w2cs), img_wh=None
-                    )  # (N_rays, n_samples, N_src, Npx, 3), (N_rays, n_samples, N_src, Npx)
-                    N_src, Npx = pts_patch_mask.shape[2:]
-                    pts_patch_color = pts_patch_color.view(N_rays * n_samples, N_src, Npx, 3)[pts_mask_bool]
-                    pts_patch_mask = pts_patch_mask.view(N_rays * n_samples, N_src, Npx)[pts_mask_bool]
+            # - extract pixel
+            pts_pixel_color, pts_pixel_mask = self.patch_projector.pixel_warp(
+                pts[pts_mask_bool][:, None, :], color_maps, intrinsics,
+                w2cs, img_wh=None)  # [N_rays * n_samples,1, N_views,  3] , [N_rays*n_samples, 1, N_views]
+            pts_pixel_color = pts_pixel_color[:, 0, :, :]  # [N_rays * n_samples, N_views,  3]
+            pts_pixel_mask = pts_pixel_mask[:, 0, :]  # [N_rays*n_samples, N_views]
 
-                    sampled_color_patch = torch.zeros([N_rays * n_samples, Npx, 3]).to(device)
-                    sampled_color_patch_mask = torch.zeros([N_rays * n_samples, 1]).to(device)
+            # - extract patch
+            if_patch_blending = False if rays_uv is None else True
+            pts_patch_color, pts_patch_mask = None, None
+            if if_patch_blending:
+                pts_patch_color, pts_patch_mask = self.patch_projector.patch_warp(
+                    pts.reshape([N_rays, n_samples, 3]),
+                    rays_uv, gradients.reshape([N_rays, n_samples, 3]),
+                    color_maps,
+                    intrinsics[0], intrinsics,
+                    query_c2w[0], torch.inverse(w2cs), img_wh=None
+                )  # (N_rays, n_samples, N_src, Npx, 3), (N_rays, n_samples, N_src, Npx)
+                N_src, Npx = pts_patch_mask.shape[2:]
+                pts_patch_color = pts_patch_color.view(N_rays * n_samples, N_src, Npx, 3)[pts_mask_bool]
+                pts_patch_mask = pts_patch_mask.view(N_rays * n_samples, N_src, Npx)[pts_mask_bool]
 
-                sampled_color_mlp_, sampled_color_mlp_mask_, \
-                sampled_color_patch_, sampled_color_patch_mask_ = sdf_network.color_blend(
-                    pts[pts_mask_bool],
-                    position_latent,
-                    gradients[pts_mask_bool],
-                    dirs[pts_mask_bool],
-                    feature_vector[pts_mask_bool],
-                    img_index=img_index,
-                    pts_pixel_color=pts_pixel_color,
-                    pts_pixel_mask=pts_pixel_mask,
-                    pts_patch_color=pts_patch_color,
-                    pts_patch_mask=pts_patch_mask
+                sampled_color_patch = torch.zeros([N_rays * n_samples, Npx, 3]).to(device)
+                sampled_color_patch_mask = torch.zeros([N_rays * n_samples, 1]).to(device)
 
-                )  # [n, 3], [n, 1]
-                sampled_color_mlp[pts_mask_bool] = sampled_color_mlp_
-                sampled_color_mlp_mask[pts_mask_bool] = sampled_color_mlp_mask_.float()
-                sampled_color_mlp = sampled_color_mlp.view(N_rays, n_samples, 3)
-                sampled_color_mlp_mask = sampled_color_mlp_mask.view(N_rays, n_samples)
-                rendering_valid_mask_mlp = torch.mean(pts_mask * sampled_color_mlp_mask, dim=-1, keepdim=True) > 0.5
+            sampled_color_mlp_, sampled_color_mlp_mask_, \
+            sampled_color_patch_, sampled_color_patch_mask_ = sdf_network.color_blend(
+                pts[pts_mask_bool],
+                position_latent,
+                gradients[pts_mask_bool],
+                dirs[pts_mask_bool],
+                feature_vector[pts_mask_bool],
+                img_index=img_index,
+                pts_pixel_color=pts_pixel_color,
+                pts_pixel_mask=pts_pixel_mask,
+                pts_patch_color=pts_patch_color,
+                pts_patch_mask=pts_patch_mask
 
-                # patch blending
-                if if_patch_blending:
-                    sampled_color_patch[pts_mask_bool] = sampled_color_patch_
-                    sampled_color_patch_mask[pts_mask_bool] = sampled_color_patch_mask_.float()
-                    sampled_color_patch = sampled_color_patch.view(N_rays, n_samples, Npx, 3)
-                    sampled_color_patch_mask = sampled_color_patch_mask.view(N_rays, n_samples)
-                    rendering_patch_mask = torch.mean(pts_mask * sampled_color_patch_mask, dim=-1,
-                                                      keepdim=True) > 0.5  # [N_rays, 1]
-                else:
-                    sampled_color_patch, rendering_patch_mask = None, None
+            )  # [n, 3], [n, 1]
+            sampled_color_mlp[pts_mask_bool] = sampled_color_mlp_
+            sampled_color_mlp_mask[pts_mask_bool] = sampled_color_mlp_mask_.float()
+            sampled_color_mlp = sampled_color_mlp.view(N_rays, n_samples, 3)
+            sampled_color_mlp_mask = sampled_color_mlp_mask.view(N_rays, n_samples)
+            rendering_valid_mask_mlp = torch.mean(pts_mask * sampled_color_mlp_mask, dim=-1, keepdim=True) > 0.5
 
-        if if_render_color:
+            # patch blending
+            if if_patch_blending:
+                sampled_color_patch[pts_mask_bool] = sampled_color_patch_
+                sampled_color_patch_mask[pts_mask_bool] = sampled_color_patch_mask_.float()
+                sampled_color_patch = sampled_color_patch.view(N_rays, n_samples, Npx, 3)
+                sampled_color_patch_mask = sampled_color_patch_mask.view(N_rays, n_samples)
+                rendering_patch_mask = torch.mean(pts_mask * sampled_color_patch_mask, dim=-1,
+                                                  keepdim=True) > 0.5  # [N_rays, 1]
+            else:
+                sampled_color_patch, rendering_patch_mask = None, None
+
+        if if_general_rendering:  # used for general training
             ren_geo_feats, ren_rgb_feats, ren_ray_diff, ren_mask, _, _ = self.rendering_projector.compute(
                 pts.view(N_rays, n_samples, 3),
                 # * 3d geometry feature volumes
@@ -336,7 +329,7 @@ class SparseNeuSRenderer(nn.Module):
             )
 
             # (N_rays, n_samples, 3)
-            if if_render_gradient:
+            if if_render_with_grad:
                 sampled_color, rendering_valid_mask = rendering_network(
                     ren_geo_feats, ren_rgb_feats, ren_ray_diff, ren_mask)
             else:
@@ -389,24 +382,15 @@ class SparseNeuSRenderer(nn.Module):
         inside_sphere = pts_mask
         relax_inside_sphere = pts_mask
 
-        if background_alpha is not None and sampled_color is not None:  # render with background
-            if not self.render_outside_uniform_sampling:
-                # ! attention: the depth range selection should be careful
-                # todo: careful handle special case
-                alpha = alpha * inside_sphere + background_alpha[:, :n_samples] * (1.0 - inside_sphere)
-                alpha = torch.cat([alpha, background_alpha[:, n_samples:]], dim=-1)
-                sampled_color = sampled_color * inside_sphere[:, :, None] + \
-                                background_sampled_color[:, :n_samples] * (1.0 - inside_sphere)[:, :, None]
-                sampled_color = torch.cat([sampled_color, background_sampled_color[:, n_samples:]], dim=1)
-            else:  # - uniform sampling of outside IBRNET
-                # ! bug; some rays are out of cubes, cannot directly concat
-                alpha = torch.cat([alpha, background_alpha], dim=1)
-                sampled_color = torch.cat([sampled_color, background_sampled_color], dim=1)
-
         weights = alpha * torch.cumprod(torch.cat([torch.ones([N_rays, 1]).to(device), 1. - alpha + 1e-7], -1), -1)[:,
                           :-1]  # n_rays, n_samples
         weights_sum = weights.sum(dim=-1, keepdim=True)
         alpha_sum = alpha.sum(dim=-1, keepdim=True)
+
+        if bg_num > 0:
+            weights_sum_fg = weights[:, :-bg_num].sum(dim=-1, keepdim=True)
+        else:
+            weights_sum_fg = weights_sum
 
         if sampled_color is not None:
             color = (sampled_color * weights[:, :, None]).sum(dim=1)
@@ -459,6 +443,7 @@ class SparseNeuSRenderer(nn.Module):
             'inside_sphere': inside_sphere,
             'blended_color_patch': blended_color_patch,
             'blended_color_patch_mask': rendering_patch_mask,
+            'weights_sum_fg': weights_sum_fg
         }
 
     def render(self, rays_o, rays_d, near, far, sdf_network, rendering_network,
@@ -476,13 +461,15 @@ class SparseNeuSRenderer(nn.Module):
                intrinsics=None,
                img_wh=None,
                query_c2w=None,  # -used for testing
-               if_render_color=True,
-               if_render_gradient=True,
+               if_general_rendering=True,
+               if_render_with_grad=True,
                # * used for blending mlp rendering network
                img_index=None,
                rays_uv=None,
                # * importance sample for second lod network
                pre_sample=False,
+               # * for clear foreground
+               bg_ratio=0.0
                ):
         device = rays_o.device
         N_rays = len(rays_o)
@@ -491,24 +478,26 @@ class SparseNeuSRenderer(nn.Module):
         z_vals = torch.linspace(0.0, 1.0, self.n_samples).to(device)
         z_vals = near + (far - near) * z_vals[None, :]
 
+        bg_num = int(self.n_samples * bg_ratio)
+
         if z_vals.shape[0] == 1:
             z_vals = z_vals.repeat(N_rays, 1)
+
+        if bg_num > 0:
+            z_vals_bg = z_vals[:, self.n_samples - bg_num:]
+            z_vals = z_vals[:, :self.n_samples - bg_num]
+
+        n_samples = self.n_samples - bg_num
+        perturb = self.perturb
 
         # - significantly speed up training, for the second lod network
         if pre_sample:
             z_vals = self.sample_z_vals_from_maskVolume(rays_o, rays_d, near, far,
                                                         conditional_valid_mask_volume)
 
-        n_samples = self.n_samples
-        perturb = self.perturb
-
         if perturb_overwrite >= 0:
             perturb = perturb_overwrite
         if perturb > 0:
-            # # get intervals between samples
-            # t_rand = (torch.rand([batch_size, 1]) - 0.5).to(device)
-            # z_vals = z_vals + t_rand * 2.0 / self.n_samples
-
             # get intervals between samples
             mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
             upper = torch.cat([mids, z_vals[..., -1:]], -1)
@@ -549,6 +538,8 @@ class SparseNeuSRenderer(nn.Module):
         ret_outside = None
 
         # Render
+        if bg_num > 0:
+            z_vals = torch.cat([z_vals, z_vals_bg], dim=1)
         ret_fine = self.render_core(rays_o,
                                     rays_d,
                                     z_vals,
@@ -570,8 +561,8 @@ class SparseNeuSRenderer(nn.Module):
                                     intrinsics=intrinsics,
                                     img_wh=img_wh,
                                     query_c2w=query_c2w,
-                                    if_render_color=if_render_color,
-                                    if_render_gradient=if_render_gradient,
+                                    if_general_rendering=if_general_rendering,
+                                    if_render_with_grad=if_render_with_grad,
                                     # * used for blending mlp rendering network
                                     img_index=img_index,
                                     rays_uv=rays_uv
@@ -622,6 +613,7 @@ class SparseNeuSRenderer(nn.Module):
             'sdf_random': sdf_random,
             'blended_color_patch': ret_fine['blended_color_patch'],
             'blended_color_patch_mask': ret_fine['blended_color_patch_mask'],
+            'weights_sum_fg': ret_fine['weights_sum_fg']
         }
 
         return result
@@ -650,7 +642,7 @@ class SparseNeuSRenderer(nn.Module):
         return new_z_vals
 
     @torch.no_grad()
-    def sample_z_vals_from_maskVolume(self, rays_o, rays_d, near, far, mask_volume):
+    def sample_z_vals_from_maskVolume(self, rays_o, rays_d, near, far, mask_volume):  # don't use
         device = rays_o.device
         N_rays = len(rays_o)
         n_samples = self.n_samples * 2
@@ -841,9 +833,6 @@ class SparseNeuSRenderer(nn.Module):
         coords_volume = coords_volume.permute(1, 2, 3, 0).contiguous().view(-1, 3)
         mask_volume = mask_volume.permute(1, 2, 3, 0).contiguous().view(-1, 1)
         feature_volume = feature_volume.permute(1, 2, 3, 0).contiguous().view(-1, C)
-
-        # - for check
-        # sdf_volume = torch.rand_like(sdf_volume).float().to(sdf_volume.device) * 0.02
 
         final_mask, valid_num = prune(sdf_volume, mask_volume, threshold)
 
