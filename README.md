@@ -9,5 +9,5 @@ sparse images (as few as 2 or 3).
 Code release:
 
 - [x] Core models.
-- [ ] Inference code
-- [ ] Training code.
+- [x] Training and inference code of general part.
+- [ ] Training and inference code of fine-tuning part.
