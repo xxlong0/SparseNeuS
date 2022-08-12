@@ -60,7 +60,7 @@ def gen_rays_from_single_image(H, W, image, intrinsic, c2w, depth=None, mask=Non
 
 
 def gen_random_rays_from_single_image(H, W, N_rays, image, intrinsic, c2w, depth=None, mask=None, dilated_mask=None,
-                                      attention_sample=False, h_patch_size=3):
+                                      importance_sample=False, h_patch_size=3):
     """
     generate random rays in world space, for a single image
     :param H:
@@ -78,10 +78,10 @@ def gen_random_rays_from_single_image(H, W, N_rays, image, intrinsic, c2w, depth
     if dilated_mask is None:
         dilated_mask = mask
 
-    if not attention_sample:
+    if not importance_sample:
         pixels_x = torch.randint(low=0, high=W, size=[N_rays])
         pixels_y = torch.randint(low=0, high=H, size=[N_rays])
-    elif attention_sample and dilated_mask is not None:  # sample more pts in the valid mask regions
+    elif importance_sample and dilated_mask is not None:  # sample more pts in the valid mask regions
         pixels_x_1 = torch.randint(low=0, high=W, size=[N_rays // 4])
         pixels_y_1 = torch.randint(low=0, high=H, size=[N_rays // 4])
 

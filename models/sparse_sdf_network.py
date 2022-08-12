@@ -147,7 +147,6 @@ class SparseSdfNetwork(nn.Module):
                  cost_type='variance_mean',
                  d_pyramid_feature_compress=16,
                  regnet_d_out=8, num_sdf_layers=4,
-                 pos_add_type='coord',
                  multires=6,
                  ):
         super(SparseSdfNetwork, self).__init__()
@@ -166,9 +165,8 @@ class SparseSdfNetwork(nn.Module):
 
         self.regnet_d_out = regnet_d_out
         self.multires = multires
-        self.pos_add_type = pos_add_type
-        d_in_embedding = self.regnet_d_out if self.pos_add_type == 'latent' else 3
-        self.pos_embedder = Embedding(d_in_embedding, self.multires)
+
+        self.pos_embedder = Embedding(3, self.multires)
 
         self.compress_layer = ConvBnReLU(
             self.ch_in, self.d_pyramid_feature_compress, 3, 1, 1,
@@ -449,7 +447,7 @@ class SparseSdfNetwork(nn.Module):
         sdf_volume = sdf_volume.view(1, 1, dX, dY, dZ)
         return sdf_volume
 
-    def gradient(self, x, conditional_volume, lod, gru_fusion):
+    def gradient(self, x, conditional_volume, lod):
         """
         return the gradient of specific lod
         :param x:
@@ -457,7 +455,7 @@ class SparseSdfNetwork(nn.Module):
         :return:
         """
         x.requires_grad_(True)
-        output = self.sdf(x, conditional_volume, lod, gru_fusion)
+        output = self.sdf(x, conditional_volume, lod)
         y = output['sdf_pts_scale%d' % lod]
 
         d_output = torch.ones_like(y, requires_grad=False, device=y.device)

@@ -121,7 +121,6 @@ class GenericTrainer(nn.Module):
         # - DataParallel mode, cannot modify attributes in forward()
         # self.iter_step = 0
         self.val_mesh_freq = self.conf.get_int('train.val_mesh_freq')
-        self.val_fields_freq = self.conf.get_int('train.val_fields_freq')
 
         # - True for finetuning; False for general training
         self.if_fitted_rendering = self.conf.get_bool('train.if_fitted_rendering', default=False)
@@ -187,7 +186,7 @@ class GenericTrainer(nn.Module):
 
         # ***********************     Lod==0     ***********************
         if not self.if_fix_lod0_networks:
-            geometry_feature_maps = self.obtain_pyramid_feature_maps(imgs, type='geometry')
+            geometry_feature_maps = self.obtain_pyramid_feature_maps(imgs)
 
             conditional_features_lod0 = self.sdf_network_lod0.get_conditional_volume(
                 feature_maps=geometry_feature_maps[None, :, :, :, :],
@@ -230,7 +229,7 @@ class GenericTrainer(nn.Module):
             depth_masks_lod0 = F.interpolate(depth_masks_lod0_l4x.float(), size=(sizeH, sizeW), mode='nearest')
 
         # *************** losses
-        loss_lod0_bg, losses_lod0_bg, depth_statis_lod0_bg = None, None, None
+        loss_lod0, losses_lod0, depth_statis_lod0 = None, None, None
 
         if not self.if_fix_lod0_networks:
             render_out = self.sdf_renderer_lod0.render(
@@ -253,12 +252,12 @@ class GenericTrainer(nn.Module):
                 if_render_with_grad=True,
             )
 
-            loss_lod0_bg, losses_lod0_bg, depth_statis_lod0_bg = self.cal_losses_sdf(render_out, sample_rays,
+            loss_lod0, losses_lod0, depth_statis_lod0 = self.cal_losses_sdf(render_out, sample_rays,
                                                                                      iter_step, lod=0)
 
         # ***********************     Lod==1     ***********************
 
-        loss_lod1_bg, losses_lod1_bg, depth_statis_lod1_bg = None, None, None
+        loss_lod1, losses_lod1, depth_statis_lod1 = None, None, None
 
         if self.num_lods > 1:
             geometry_feature_maps_lod1 = self.obtain_pyramid_feature_maps(imgs, lod=1)
@@ -308,7 +307,7 @@ class GenericTrainer(nn.Module):
                 img_wh=[sizeW, sizeH],
                 bg_ratio=self.bg_ratio,
             )
-            loss_lod1_bg, losses_lod1_bg, depth_statis_lod1_bg = self.cal_losses_sdf(render_out_lod1, sample_rays,
+            loss_lod1, losses_lod1, depth_statis_lod1 = self.cal_losses_sdf(render_out_lod1, sample_rays,
                                                                                      iter_step, lod=1)
 
         # # - extract mesh
@@ -335,14 +334,14 @@ class GenericTrainer(nn.Module):
 
         losses = {
             # - lod 0
-            'loss_lod0_bg': loss_lod0_bg,
-            'losses_lod0_bg': losses_lod0_bg,
-            'depth_statis_lod0_bg': depth_statis_lod0_bg,
+            'loss_lod0': loss_lod0,
+            'losses_lod0': losses_lod0,
+            'depth_statis_lod0': depth_statis_lod0,
 
             # - lod 1
-            'loss_lod1_bg': loss_lod1_bg,
-            'losses_lod1_bg': losses_lod1_bg,
-            'depth_statis_lod1_bg': depth_statis_lod1_bg,
+            'loss_lod1': loss_lod1,
+            'losses_lod1': losses_lod1,
+            'depth_statis_lod1': depth_statis_lod1,
 
         }
 
@@ -355,7 +354,7 @@ class GenericTrainer(nn.Module):
                  alpha_inter_ratio_lod1=0.0,
                  iter_step=0,
                  chunk_size=512,
-                 val_depth=False,
+                 save_vis=False,
                  ):
         # * only support batch_size==1
         # ! attention: the list of string cannot be splited in DataParallel
@@ -490,7 +489,7 @@ class GenericTrainer(nn.Module):
         out_depth_fine_lod1 = []
 
         # out_depth_fine_explicit = []
-        if val_depth:
+        if save_vis:
             for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
 
                 # ****** lod 0 ****
@@ -583,12 +582,12 @@ class GenericTrainer(nn.Module):
 
             self.save_visualization(true_img, true_depth_colored, out_depth_fine, out_normal_fine,
                                     query_w2c[0], out_rgb_fine, H, W,
-                                    depth_min, depth_max, iter_step, meta, "val_lod0_bg")
+                                    depth_min, depth_max, iter_step, meta, "val_lod0")
 
             if self.num_lods > 1:
                 self.save_visualization(true_img, true_depth_colored, out_depth_fine_lod1, out_normal_fine_lod1,
                                         query_w2c[0], out_rgb_fine_lod1, H, W,
-                                        depth_min, depth_max, iter_step, meta, "val_lod1_bg")
+                                        depth_min, depth_max, iter_step, meta, "val_lod1")
 
         # - extract mesh
         if (iter_step % self.val_mesh_freq == 0):
@@ -671,7 +670,7 @@ class GenericTrainer(nn.Module):
                 alpha_inter_ratio_lod1=0.0,
                 iter_step=0,
                 mode='train',
-                val_depth=False,
+                save_vis=False,
                 ):
 
         if mode == 'train':
@@ -689,7 +688,7 @@ class GenericTrainer(nn.Module):
                                  alpha_inter_ratio_lod0=alpha_inter_ratio_lod0,
                                  alpha_inter_ratio_lod1=alpha_inter_ratio_lod1,
                                  iter_step=iter_step,
-                                 val_depth=val_depth,
+                                 save_vis=save_vis,
                                  )
 
     def obtain_pyramid_feature_maps(self, imgs, lod=0):
@@ -822,6 +821,7 @@ class GenericTrainer(nn.Module):
         # The images of DTU dataset contain large black regions (0 rgb values),
         # can use this data prior to make fg more clean
         background_loss = 0.0
+        fg_bg_loss = 0.0
         if self.fg_bg_weight > 0 and torch.mean((mask < 0.5).to(torch.float32)) > 0.02:
             weights_sum_fg = render_out['weights_sum_fg']
             fg_bg_error = (weights_sum_fg - mask)[mask < 0.5]
@@ -895,9 +895,3 @@ class GenericTrainer(nn.Module):
         mesh.export(os.path.join(self.base_exp_dir, 'meshes_' + mode,
                                  'mesh_{:0>8d}_{}_lod{:0>1d}.ply'.format(iter_step, meta, lod)))
 
-        # fileds
-        if iter_step % self.val_fields_freq == 0:
-            os.makedirs(os.path.join(self.base_exp_dir, 'fields_' + mode), exist_ok=True)
-            np.save(os.path.join(self.base_exp_dir, 'fields_' + mode,
-                                 'field_{:0>8d}_{}_lod{:0>1d}.npy'.format(iter_step, meta, lod)),
-                    fields)

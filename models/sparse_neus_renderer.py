@@ -140,9 +140,7 @@ class SparseNeuSRenderer(nn.Module):
         new_sdf = torch.ones([batch_size * n_importance, 1]).to(pts.dtype).to(device) * 100
 
         if torch.sum(pts_mask) > 1:
-            new_outputs = sdf_network.sdf(pts.reshape(-1, 3)[pts_mask_bool], conditional_volume, lod=lod,
-                                          gru_fusion=gru_fusion)
-
+            new_outputs = sdf_network.sdf(pts.reshape(-1, 3)[pts_mask_bool], conditional_volume, lod=lod)
             new_sdf[pts_mask_bool] = new_outputs['sdf_pts_scale%d' % lod]  # .reshape(batch_size, n_importance)
 
         new_sdf = new_sdf.view(batch_size, n_importance)
@@ -516,7 +514,8 @@ class SparseNeuSRenderer(nn.Module):
 
                 sdf_outputs = sdf_network.sdf(
                     pts.reshape(-1, 3), conditional_volume, lod=lod)
-                sdf = sdf_outputs['sdf_pts_scale%d' % lod].reshape(N_rays, self.n_samples)
+                # pdb.set_trace()
+                sdf = sdf_outputs['sdf_pts_scale%d' % lod].reshape(N_rays, self.n_samples - bg_num)
 
                 n_steps = 4
                 for i in range(n_steps):

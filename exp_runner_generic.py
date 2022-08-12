@@ -23,8 +23,7 @@ from models.sparse_sdf_network import SparseSdfNetwork
 
 from models.rendering_network import GeneralRenderingNetwork
 
-from data.dtu_perview import MVSDatasetDtuPerView
-from data.dtu_idr import DtuIDR
+from data.dtu_general import MVSDatasetDtuPerView
 
 from utils.training_utils import tocuda
 
@@ -32,7 +31,7 @@ from termcolor import colored
 
 
 class Runner:
-    def __init__(self, conf_path, mode='train', model_type='', is_continue=False,
+    def __init__(self, conf_path, mode='train', is_continue=False,
                  is_restore=False, restore_lod0=False, local_rank=0):
 
         # Initial setting
@@ -51,30 +50,19 @@ class Runner:
         self.iter_step = 0
         self.val_step = 0
 
-        # data parameters
-        self.dataset_name = self.conf['dataset.name']
-        self.trainpath = self.conf['dataset.trainpath']
-        self.valpath = self.conf['dataset.valpath']
-        self.imgScale_train = self.conf.get_float('dataset.imgScale_train')
-        self.imgScale_test = self.conf.get_float('dataset.imgScale_test')
-        self.dataset_nviews = self.conf.get_int('dataset.nviews')
-        self.dataset_scanid = self.conf.get_int('dataset.scanid')
-        self.dataset_light_idx = self.conf.get_int('dataset.light_idx')
-        self.dataset_refview_id = self.conf.get_int('dataset.refview_id')
-
         # trainning parameters
         self.end_iter = self.conf.get_int('train.end_iter')
         self.save_freq = self.conf.get_int('train.save_freq')
         self.report_freq = self.conf.get_int('train.report_freq')
         self.val_freq = self.conf.get_int('train.val_freq')
         self.val_mesh_freq = self.conf.get_int('train.val_mesh_freq')
-        self.val_fields_freq = self.conf.get_int('train.val_fields_freq')
         self.batch_size = self.num_devices  # use DataParallel to warp
         self.validate_resolution_level = self.conf.get_int('train.validate_resolution_level')
         self.learning_rate = self.conf.get_float('train.learning_rate')
         self.learning_rate_milestone = self.conf.get_list('train.learning_rate_milestone')
         self.learning_rate_factor = self.conf.get_float('train.learning_rate_factor')
         self.use_white_bkgd = self.conf.get_bool('train.use_white_bkgd')
+        self.N_rays = self.conf.get_int('train.N_rays')
 
         # warmup params for sdf gradient
         self.anneal_start_lod0 = self.conf.get_float('train.anneal_start', default=0)
@@ -82,15 +70,10 @@ class Runner:
         self.anneal_start_lod1 = self.conf.get_float('train.anneal_start_lod1', default=0)
         self.anneal_end_lod1 = self.conf.get_float('train.anneal_end_lod1', default=0)
 
-        self.N_rays = self.conf.get_int('train.N_rays')
-
         self.is_continue = is_continue
         self.is_restore = is_restore
         self.restore_lod0 = restore_lod0
         self.mode = mode
-        self.model_type = self.conf['general.model_type']
-        if model_type != '':  # overwrite
-            self.model_type = model_type
         self.model_list = []
         self.writer = None
 
@@ -100,20 +83,16 @@ class Runner:
         self.rendering_network_outside = None
         self.sdf_network_lod0 = None
         self.sdf_network_lod1 = None
-
         self.variance_network_lod0 = None
         self.variance_network_lod1 = None
         self.rendering_network_lod0 = None
         self.rendering_network_lod1 = None
-
         self.pyramid_feature_network = None  # extract 2d pyramid feature maps from images, used for geometry
         self.pyramid_feature_network_lod1 = None  # may use different feature network for different lod
 
         # * pyramid_feature_network
         self.pyramid_feature_network = FeatureNet().to(self.device)
-
         self.sdf_network_lod0 = SparseSdfNetwork(**self.conf['model.sdf_network_lod0']).to(self.device)
-
         self.variance_network_lod0 = SingleVarianceNetwork(**self.conf['model.variance_network']).to(self.device)
 
         if self.num_lods > 1:
@@ -168,7 +147,6 @@ class Runner:
             self.file_backup()
 
     def optimizer_setup(self):
-
         self.params_to_train = self.trainer.get_trainable_params()
         self.optimizer = torch.optim.Adam(self.params_to_train, lr=self.learning_rate)
 
@@ -180,58 +158,30 @@ class Runner:
         """
 
         self.train_dataset = MVSDatasetDtuPerView(
-            root_dir=self.trainpath,
+            root_dir=self.conf['dataset.trainpath'],
             split=self.conf.get_string('dataset.train_split', default='train'),
-            split_filepath=self.conf.get_string('dataset.train_split_filepath',
-                                                default=None),
-            n_views=self.dataset_nviews,
-            downSample=self.imgScale_train, scan_id=self.dataset_scanid,
-            light_idx=self.dataset_light_idx, N_rays=self.N_rays,
-            refview_id=self.dataset_refview_id,
+            split_filepath=self.conf.get_string('dataset.train_split_filepath', default=None),
+            n_views=self.conf['dataset.nviews'],
+            downSample=self.conf['dataset.imgScale_train'],
+            N_rays=self.N_rays,
             batch_size=self.batch_size,
-            mask_out_image=True,  # True for training
-            attention_sample=self.conf.get_bool('dataset.attention_sample',
-                                                default=False),
+            clean_image=True,  # True for training
+            importance_sample=self.conf.get_bool('dataset.importance_sample', default=False),
         )
+
         self.val_dataset = MVSDatasetDtuPerView(
-            root_dir=self.valpath,
+            root_dir=self.conf['dataset.valpath'],
             split=self.conf.get_string('dataset.test_split', default='test'),
-            split_filepath=self.conf.get_string('dataset.val_split_filepath',
-                                                default=None),
+            split_filepath=self.conf.get_string('dataset.val_split_filepath', default=None),
             n_views=3,
-            downSample=self.imgScale_test, scan_id=self.dataset_scanid,
-            light_idx=self.dataset_light_idx, N_rays=self.N_rays,
-            refview_id=self.dataset_refview_id,
+            downSample=self.conf['dataset.imgScale_test'],
+            N_rays=self.N_rays,
             batch_size=self.batch_size,
-            mask_out_image=self.conf.get_bool('dataset.mask_out_image',
-                                              default=False) if self.mode != 'train' else False,
-            attention_sample=self.conf.get_bool('dataset.attention_sample',
-                                                default=False),
+            clean_image=self.conf.get_bool('dataset.mask_out_image',
+                                           default=False) if self.mode != 'train' else False,
+            importance_sample=self.conf.get_bool('dataset.importance_sample', default=False),
             test_ref_views=self.conf.get_list('dataset.test_ref_views', default=[]),
         )
-
-        if self.mode == 'test' or self.mode == 'gen_video':
-            self.test_dataset = DtuIDR(
-                root_dir=self.conf['dataset.testpath'], split='test',
-                scan_id=self.conf['dataset.test_scan_id'],
-                N_rays=self.conf.get_int('train.N_rays'),
-                img_wh=self.conf['dataset.test_img_wh'],
-                clip_wh=self.conf['dataset.test_clip_wh'],
-                n_views=self.conf.get_int('dataset.test_n_views'),
-                mask_out_image=self.conf.get_bool('dataset.mask_out_image', default=False),
-                if_perview=self.conf.get_bool('dataset.if_perview', default=True),
-                train_img_idx=self.conf.get_list('dataset.train_img_idx', default=[]),
-                test_img_idx=self.conf.get_list('dataset.test_img_idx', default=[])
-            )
-
-            self.test_dataloader = DataLoader(self.test_dataset,
-                                              shuffle=False,
-                                              num_workers=4 * self.batch_size,
-                                              batch_size=self.batch_size,
-                                              pin_memory=True,
-                                              drop_last=True
-                                              )
-            self.test_dataloader_iterator = iter(self.test_dataloader)
 
         self.train_dataloader = DataLoader(self.train_dataset,
                                            shuffle=True,
@@ -367,12 +317,12 @@ class Runner:
 
                     print(self.base_exp_dir)
                     print(
-                        'iter:{:8>d}'
-                        ' loss = {:.4f} '
-                        ' d_loss_lod0 = {:.4f} '
+                        'iter:{:8>d} '
+                        'loss = {:.4f} '
+                        'd_loss_lod0 = {:.4f} '
                         'color_loss_lod0 = {:.4f} '
                         'sparse_loss_lod0= {:.4f} '
-                        ' d_loss_lod1 = {:.4f} '
+                        'd_loss_lod1 = {:.4f} '
                         'color_loss_lod1 = {:.4f} '
                         '  lr = {:.5f}'.format(
                             self.iter_step, loss,
@@ -559,18 +509,11 @@ class Runner:
             # idx = np.random.randint(len(self.val_dataset))
         self.val_step += 1
 
-        if self.mode == 'test' or self.mode == 'gen_video':
-            try:
-                batch = self.test_dataloader_iterator.next()
-            except:
-                self.test_dataloader_iterator = iter(self.test_dataloader)  # reset
-                batch = self.test_dataloader_iterator.next()
-        else:
-            try:
-                batch = self.val_dataloader_iterator.next()
-            except:
-                self.val_dataloader_iterator = iter(self.val_dataloader)  # reset
-                batch = self.val_dataloader_iterator.next()
+        try:
+            batch = self.val_dataloader_iterator.next()
+        except:
+            self.val_dataloader_iterator = iter(self.val_dataloader)  # reset
+            batch = self.val_dataloader_iterator.next()
 
         background_rgb = None
         if self.use_white_bkgd:
@@ -591,32 +534,8 @@ class Runner:
             alpha_inter_ratio_lod0=alpha_inter_ratio_lod0,
             alpha_inter_ratio_lod1=alpha_inter_ratio_lod1,
             iter_step=self.iter_step,
-            val_depth=False,
+            save_vis=True,
             mode='val',
-        )
-
-    def gen_video(self):
-
-        if self.mode == 'test' or self.mode == 'gen_video':
-            batch = self.test_dataloader_iterator.next()
-        else:
-            batch = self.val_dataloader_iterator.next()
-
-        background_rgb = None
-        if self.use_white_bkgd:
-            background_rgb = torch.ones([1, 3]).to(self.device)
-
-        batch['batch_idx'] = torch.tensor([x for x in range(self.batch_size)])
-
-        batch = tocuda(batch, self.device)
-
-        self.trainer.module.gen_video(
-            batch,
-            background_rgb=background_rgb,
-            alpha_inter_ratio=self.get_alpha_inter_ratio(self.anneal_start_lod0, self.anneal_end_lod0),
-            alpha_inter_ratio_lod1=self.get_alpha_inter_ratio(self.anneal_start_lod1, self.anneal_end_lod1),
-            iter_step=self.iter_step,
-            val_depth=True,
         )
 
 
@@ -629,7 +548,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--conf', type=str, default='./confs/base.conf')
     parser.add_argument('--mode', type=str, default='train')
-    parser.add_argument('--model_type', type=str, default='')
     parser.add_argument('--threshold', type=float, default=0.0)
     parser.add_argument('--is_continue', default=False, action="store_true")
     parser.add_argument('--is_restore', default=False, action="store_true")
@@ -642,13 +560,11 @@ if __name__ == '__main__':
     torch.cuda.set_device(args.local_rank)
     torch.backends.cudnn.benchmark = True  # ! make training 2x faster
 
-    runner = Runner(args.conf, args.mode, args.model_type, args.is_continue, args.is_restore, args.restore_lod0,
+    runner = Runner(args.conf, args.mode, args.is_continue, args.is_restore, args.restore_lod0,
                     args.local_rank)
 
     if args.mode == 'train':
         runner.train()
-    elif args.mode == 'test' or args.mode == 'val':
+    elif args.mode == 'val':
         for i in range(len(runner.val_dataset)):
             runner.validate()
-    elif args.mode == 'gen_video':
-        runner.gen_video()
