@@ -48,10 +48,6 @@ class DtuFit:
         self.scan_id = scan_id
         self.n_views = n_views
 
-        if train_img_idx[0] > 48:
-            near = 700
-            far = 1100
-
         self.near = near
         self.far = far
 
@@ -72,7 +68,7 @@ class DtuFit:
         self.train_img_idx = train_img_idx
         self.test_img_idx = test_img_idx
 
-        camera_dict = np.load(os.path.join(self.data_dir, 'cameras.npz'))
+        camera_dict = np.load(os.path.join(self.data_dir, 'cameras.npz'), allow_pickle=True)
         self.images_list = sorted(glob(os.path.join(self.data_dir, "image/*.png")))
         # world_mat: projection matrix: world to image
         self.world_mats_np = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in
@@ -86,9 +82,6 @@ class DtuFit:
         self.ref_w2c = np.linalg.inv(load_K_Rt_from_P(None, ref_world_mat[:3, :4])[1])
 
         self.all_images = []
-        self.all_images_raw = []
-        self.all_masks = []
-        self.all_masks_dilated = []
         self.all_intrinsics = []
         self.all_w2cs = []
 
@@ -234,34 +227,25 @@ class DtuFit:
             support_idxs = [render_idx]
 
         sample['images'] = self.all_images[support_idxs]  # (V, 3, H, W)
-
         sample['w2cs'] = self.scaled_w2cs[support_idxs]  # (V, 4, 4)
         sample['c2ws'] = self.scaled_c2ws[support_idxs]  # (V, 4, 4)
         sample['intrinsics'] = self.scaled_intrinsics[support_idxs][:, :3, :3]  # (V, 3, 3)
         sample['affine_mats'] = self.scaled_affine_mats[support_idxs]  # ! in world space
-
         sample['scan'] = self.scan_id
         sample['scale_factor'] = torch.tensor(self.scale_factor)
-
         sample['img_wh'] = torch.from_numpy(np.array(self.img_wh))
-
         sample['partial_vol_origin'] = torch.tensor(self.partial_vol_origin, dtype=torch.float32)
-
         sample['img_index'] = torch.tensor(render_idx)
 
         # - query image
         sample['query_image'] = self.all_images[render_idx]
-        sample['query_mask'] = self.all_masks[render_idx]
         sample['query_c2w'] = self.scaled_c2ws[render_idx]
         sample['query_w2c'] = self.scaled_w2cs[render_idx]
         sample['query_intrinsic'] = self.scaled_intrinsics[render_idx]
         sample['query_near_far'] = self.scaled_near_fars[render_idx]
-
         sample['meta'] = str(self.scan_id) + "_" + os.path.basename(self.images_list[render_idx])
-
         sample['scale_mat'] = torch.from_numpy(self.scale_mat)
         sample['trans_mat'] = torch.from_numpy(np.linalg.inv(self.ref_w2c))
-
         sample['rendering_c2ws'] = self.scaled_c2ws[self.test_img_idx]
         sample['rendering_imgs_idx'] = torch.Tensor(np.array(self.test_img_idx).astype(np.int32))
 

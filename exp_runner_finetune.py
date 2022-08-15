@@ -102,23 +102,12 @@ class Runner:
         self.iter_step = 0
         self.val_step = 0
 
-        # data parameters
-        self.dataset_name = self.conf['dataset.name']
-        self.imgScale_train = self.conf.get_float('dataset.imgScale_train')
-        self.imgScale_test = self.conf.get_float('dataset.imgScale_test')
-        self.dataset_nviews = self.conf.get_int('dataset.nviews')
-        self.dataset_scanid = self.conf.get_int('dataset.scanid')
-        self.dataset_light_idx = self.conf.get_int('dataset.light_idx')
-        self.dataset_refview_id = self.conf.get_int('dataset.refview_id')
-
         # trainning parameters
         self.end_iter = self.conf.get_int('train.end_iter')
         self.save_freq = self.conf.get_int('train.save_freq')
         self.report_freq = self.conf.get_int('train.report_freq')
         self.val_freq = self.conf.get_int('train.val_freq')
         self.val_mesh_freq = self.conf.get_int('train.val_mesh_freq')
-        self.val_fields_freq = self.conf.get_int('train.val_fields_freq')
-        # self.batch_size = self.conf.get_int('train.batch_size')
         self.batch_size = self.num_devices
         self.validate_resolution_level = self.conf.get_int('train.validate_resolution_level')
         self.learning_rate = self.conf.get_float('train.learning_rate')
@@ -320,8 +309,6 @@ class Runner:
                 losses = self.trainer(
                     batch,
                     background_rgb=background_rgb,
-                    alpha_inter_ratio_lod0=1.0,
-                    alpha_inter_ratio_lod1=1.0,
                     iter_step=self.iter_step,
                     mode='train',
                 )
@@ -340,34 +327,31 @@ class Runner:
                     self.writer.add_scalar('Loss/loss', loss, self.iter_step)
 
                     if losses_lod0 is not None:
-                        self.writer.add_scalar('Loss/d_loss_lod0',
+                        self.writer.add_scalar('Loss/d_loss',
                                                losses_lod0['depth_loss'].mean() if losses_lod0 is not None else 0,
                                                self.iter_step)
-                        self.writer.add_scalar('Loss/sparse_loss_lod0',
+                        self.writer.add_scalar('Loss/sparse_loss',
                                                losses_lod0[
                                                    'sparse_loss'].mean() if losses_lod0 is not None else 0,
                                                self.iter_step)
-                        self.writer.add_scalar('Loss/color_loss_lod0',
+                        self.writer.add_scalar('Loss/color_loss',
                                                losses_lod0['color_mlp_loss'].mean()
                                                if losses_lod0['color_mlp_loss'] is not None else 0,
                                                self.iter_step)
-
-                        self.writer.add_scalar('statis/psnr_lod0',
-                                               losses_lod0['psnr'].mean()
-                                               if losses_lod0['psnr'] is not None else 0,
+                        self.writer.add_scalar('statis/psnr',
+                                               losses_lod0['psnr_mlp'].mean()
+                                               if losses_lod0['psnr_mlp'] is not None else 0,
                                                self.iter_step)
 
                     print(self.base_exp_dir)
                     self.logger.info(
-                        'iter:{:8>d}'
-                        ' loss = {:.4f} '
-                        ' d_loss_lod0 = {:.4f} '
-                        'color_loss_lod0 = {:.4f} '
-                        'sparse_loss_lod0= {:.4f} '
+                        'iter:{:8>d} '
+                        'loss = {:.4f} '
+                        'color_loss = {:.4f} '
+                        'sparse_loss= {:.4f} '
                         'color_patch_loss = {:.4f}'
                         '  lr = {:.5f}'.format(
                             self.iter_step, loss,
-                            losses_lod0['depth_loss'].mean() if losses_lod0 is not None else 0,
                             losses_lod0['color_mlp_loss'].mean() if losses_lod0 is not None else 0,
                             losses_lod0['sparse_loss'].mean() if losses_lod0 is not None else 0,
                             losses_lod0['color_patch_loss'].mean(),
@@ -376,22 +360,17 @@ class Runner:
                     if losses_lod0 is not None:
                         self.logger.info(
                             'iter:{:8>d} '
-                            ' weights_sum = {:.4f} '
+                            'weights_sum = {:.4f} '
                             'alpha_sum = {:.4f} '
                             'sparse_weight= {:.4f} '
-                            ' background_loss = {:.4f} '
-                            'background_weight = {:.4f} '
                                 .format(
                                 self.iter_step,
                                 losses_lod0['weights_sum'].mean(),
                                 losses_lod0['alpha_sum'].mean(),
                                 losses_lod0['sparse_weight'].mean(),
-                                losses_lod0['background_loss'].mean(),
-                                losses_lod0['background_weight'].mean(),
                             ))
 
                     ic(losses_lod0['variance'])
-                    ic(losses_lod0['tv'])
                     ic(losses_lod0['visibility_beta'])
 
                 if self.iter_step % self.save_freq == 0 and self.iter_step > 5000:
@@ -431,7 +410,6 @@ class Runner:
     def get_alpha_inter_ratio(self, start, end):
         if self.is_finetune and not self.train_from_scratch:
             return 1.0
-
         if end == 0.0:
             return 1.0
         elif self.iter_step < start:
@@ -560,10 +538,8 @@ class Runner:
         self.trainer(
             batch,
             background_rgb=background_rgb,
-            alpha_inter_ratio_lod0=1.0,
-            alpha_inter_ratio_lod1=1.0,
             iter_step=self.iter_step,
-            val_depth=True,
+            save_vis=True,
             mode='val',
         )
 
