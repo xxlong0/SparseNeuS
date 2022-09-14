@@ -21,8 +21,8 @@ sparse images (as few as 2 or 3).
 - PyMCubes
 
 ### Dataset
-- DTU Training dataset. Please download the preprocessed DTU dataset provided by [MVSNet](https://drive.google.com/file/d/1eDjh-_bxKKnEuz5h-HXS7EDJn59clx6V/view).
-- DTU testing dataset. Since our target neural reconstruction with sparse views, we select two set of three images from the 15 testing scenes (same as [IDR](https://github.com/lioryariv/idr)) for evaluation. Download our prepared [testing dataset]().
+- DTU Training dataset. Please download the preprocessed DTU dataset provided by [MVSNet](https://drive.google.com/file/d/1eDjh-_bxKKnEuz5h-HXS7EDJn59clx6V/view). 
+- DTU testing dataset. Since our target neural reconstruction with sparse views, we select two set of three images from the 15 testing scenes (same as [IDR](https://github.com/lioryariv/idr)) for evaluation. Download our prepared [testing dataset](https://connecthkuhk-my.sharepoint.com/:u:/g/personal/xxlong_connect_hku_hk/EU22HEv48nRLnnnliRvJNA0BILozsMLbhsnMQh1WZLY5kg?e=Lh7kWM).
 
 
 ### Easy to try
