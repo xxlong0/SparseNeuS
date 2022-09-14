@@ -35,7 +35,7 @@ bash ./sample_bashs/dtu_scan118.sh
 Our training has two stages. First train the coarse level and then the fine level.
 ```shell
 python exp_runner_generic.py --mode train --conf ./confs/general_lod0.conf
-python exp_runner_generic.py --mode train --conf ./confs/general_lod0.conf --is_continue --restore_lod0
+python exp_runner_generic.py --mode train --conf ./confs/general_lod1.conf --is_continue --restore_lod0
 ```
 
 ### Finetuning
