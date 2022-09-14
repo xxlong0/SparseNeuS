@@ -262,7 +262,7 @@ class FinetuneTrainer(nn.Module):
                    background_rgb=None,
                    iter_step=0,
                    chunk_size=512,
-                   val_depth=False,
+                   save_vis=False,
                    ):
 
         # * finetune on one specific scene
@@ -360,7 +360,7 @@ class FinetuneTrainer(nn.Module):
                  background_rgb=None,
                  iter_step=0,
                  chunk_size=512,
-                 val_depth=True,
+                 save_vis=True,
                  ):
         # * only support batch_size==1
         # ! attention: the list of string cannot be splited in DataParallel
@@ -425,7 +425,7 @@ class FinetuneTrainer(nn.Module):
 
         out_rgb_mlp = []
 
-        if val_depth:
+        if save_vis:
             for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
 
                 # ****** lod 0 ****
@@ -553,7 +553,7 @@ class FinetuneTrainer(nn.Module):
                 background_rgb=None,
                 iter_step=0,
                 mode='train',
-                val_depth=False,
+                save_vis=False,
                 ):
 
         if mode == 'train':
@@ -566,7 +566,7 @@ class FinetuneTrainer(nn.Module):
             return self.val_step(sample,
                                  perturb_overwrite=perturb_overwrite,
                                  background_rgb=background_rgb,
-                                 iter_step=iter_step, val_depth=val_depth,
+                                 iter_step=iter_step, save_vis=save_vis,
                                  )
 
     def obtain_pyramid_feature_maps(self, imgs, lod=0):
