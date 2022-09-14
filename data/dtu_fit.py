@@ -220,7 +220,7 @@ class DtuFit:
 
         if self.split == 'train':
             render_idx = self.train_img_idx[idx % self.n_views]
-            support_idxs = [render_idx]
+            support_idxs = [idx for idx in self.train_img_idx if idx != render_idx]
         else:
             # render_idx = idx % self.n_test_images + self.n_train_images
             render_idx = self.test_img_idx[idx % len(self.test_img_idx)]
