@@ -47,11 +47,12 @@ which decide how much regions of the scene are kept.
 For few cases with weak texture or noises, improper 'visibility_beta' and 'visibility_gama' will easily cause empty result.
 To make the optimization more robust, the 'visibility_weight_thred' is introduced to avoid all regions of the scene are discarded.
 ```shell
+#!/usr/bin/env bash
 python exp_runner_finetune.py \
 --mode train --conf ./confs/finetune.conf --is_finetune \
 --checkpoint_path ./weights/ckpt.pth \
---case_name scan114  --train_imgs_idx 0 1 2 --test_imgs_idx 0 1 2 --near 425 --far 900 \
---visibility_beta 0.010 --visibility_gama 0.010 --visibility_weight_thred 0.7
+--case_name scan118  --train_imgs_idx 0 1 2 --test_imgs_idx 0 1 2 --near 700 --far 1100 \
+--visibility_beta 0.025 --visibility_gama 0.010 --visibility_weight_thred 0.7 0.6 0.5
 ```
 
 ### Evaluation
