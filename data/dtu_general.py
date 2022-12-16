@@ -301,16 +301,18 @@ class MVSDatasetDtuPerView(Dataset):
             start_idx = 0
         else:
             start_idx = 1
-        sample['images'] = imgs[start_idx:]  # (V, 3, H, W)
-        sample['depths_h'] = torch.from_numpy(depths_h.astype(np.float32))[start_idx:]  # (V, H, W)
-        sample['masks_h'] = torch.from_numpy(masks_h.astype(np.float32))[start_idx:]  # (V, H, W)
-        sample['w2cs'] = torch.from_numpy(w2cs.astype(np.float32))[start_idx:]  # (V, 4, 4)
-        sample['c2ws'] = torch.from_numpy(c2ws.astype(np.float32))[start_idx:]  # (V, 4, 4)
-        sample['near_fars'] = torch.from_numpy(near_fars.astype(np.float32))[start_idx:]  # (V, 2)
-        sample['intrinsics'] = torch.from_numpy(intrinsics.astype(np.float32))[start_idx:, :3, :3]  # (V, 3, 3)
-        sample['view_ids'] = torch.from_numpy(np.array(view_ids))[start_idx:]
+
+        sample['images'] = imgs  # (V, 3, H, W)
+        sample['depths_h'] = torch.from_numpy(depths_h.astype(np.float32))  # (V, H, W)
+        sample['masks_h'] = torch.from_numpy(masks_h.astype(np.float32))  # (V, H, W)
+        sample['w2cs'] = torch.from_numpy(w2cs.astype(np.float32))  # (V, 4, 4)
+        sample['c2ws'] = torch.from_numpy(c2ws.astype(np.float32))  # (V, 4, 4)
+        sample['near_fars'] = torch.from_numpy(near_fars.astype(np.float32))  # (V, 2)
+        sample['intrinsics'] = torch.from_numpy(intrinsics.astype(np.float32))[:, :3, :3]  # (V, 3, 3)
+        sample['view_ids'] = torch.from_numpy(np.array(view_ids))
+        sample['affine_mats'] = torch.from_numpy(affine_mats.astype(np.float32))  # ! in world space
+
         sample['light_idx'] = torch.tensor(light_idx)
-        sample['affine_mats'] = torch.from_numpy(affine_mats.astype(np.float32))[start_idx:]  # ! in world space
         sample['scan'] = scan
 
         sample['scale_factor'] = torch.tensor(scale_factor)
@@ -327,6 +329,15 @@ class MVSDatasetDtuPerView(Dataset):
         sample['query_depth'] = sample['depths_h'][0]
         sample['query_mask'] = sample['masks_h'][0]
         sample['query_near_far'] = sample['near_fars'][0]
+
+        sample['images'] = sample['images'][start_idx:]  # (V, 3, H, W)
+        sample['depths_h'] = sample['depths_h'][start_idx:]  # (V, H, W)
+        sample['masks_h'] = sample['masks_h'][start_idx:]  # (V, H, W)
+        sample['w2cs'] = sample['w2cs'][start_idx:]  # (V, 4, 4)
+        sample['c2ws'] = sample['c2ws'][start_idx:]  # (V, 4, 4)
+        sample['intrinsics'] = sample['intrinsics'][start_idx:]  # (V, 3, 3)
+        sample['view_ids'] = sample['view_ids'][start_idx:]
+        sample['affine_mats'] = sample['affine_mats'][start_idx:]  # ! in world space
 
         sample['scale_mat'] = torch.from_numpy(scale_mat)
         sample['trans_mat'] = torch.from_numpy(w2c_ref_inv)
