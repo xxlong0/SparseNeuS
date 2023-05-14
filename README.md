@@ -55,7 +55,9 @@ python exp_runner_finetune.py \
 --visibility_beta 0.025 --visibility_gama 0.010 --visibility_weight_thred 0.7 0.6 0.5
 ```
 
-### Evaluation
+### Results
+You can download the DTU results of the paper [here](https://connecthkuhk-my.sharepoint.com/:f:/g/personal/xxlong_connect_hku_hk/EpvCB9YC1FZEtrsrbEkd8AwBGdnymfTQLJIdXFIeIOcqsw?e=3hb9Zn),
+and [BMVS results](https://connecthkuhk-my.sharepoint.com/:f:/g/personal/xxlong_connect_hku_hk/EpLOwBek671NmgzmmLresT0Bt9JKgIYBkHogeQsukzfttQ?e=rodRih)
 
 
 ## Citation
