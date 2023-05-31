@@ -19,6 +19,7 @@ sparse images (as few as 2 or 3).
 - tqdm
 - scipy
 - PyMCubes
+- inplace-abn
 
 ### Dataset
 - DTU Training dataset. Please download the preprocessed DTU dataset provided by [MVSNet](https://drive.google.com/file/d/1eDjh-_bxKKnEuz5h-HXS7EDJn59clx6V/view). As stated in the paper, we preprocess the images to obtain the masks about the "black empty background" to remove image noises. The preprocessed masks can be downloaded [here](https://connecthkuhk-my.sharepoint.com/:u:/g/personal/xxlong_connect_hku_hk/EW_v7RA73HNEquScVtNJ34gB4hYlRfEatW4TOg086F0_Lg?e=3SKiif). Training without the masks will not be a problem, just ignore the "masks" in the dataloader.
