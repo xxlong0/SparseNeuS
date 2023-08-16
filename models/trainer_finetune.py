@@ -16,8 +16,7 @@ from models.render_utils import sample_pdf
 from utils.misc_utils import visualize_depth_numpy
 
 from utils.training_utils import tocuda, numpy2tensor
-from loss.depth_metric import compute_depth_errors
-from loss.color_loss import OcclusionColorLoss, OcclusionColorPatchLoss
+from loss.color_loss import PixelColorLoss, PatchColorLoss, AccMaskLoss
 from loss.depth_loss import DepthLoss, DepthSmoothLoss
 
 from models.projector import Projector
@@ -102,33 +101,21 @@ class FinetuneTrainer(nn.Module):
         self.sdf_decay_param = self.conf.get_float('train.sdf_decay_param', default=100)
         self.color_pixel_weight = self.conf.get_float('train.color_pixel_weight', default=1.0)
         self.color_patch_weight = self.conf.get_float('train.color_patch_weight', default=0.)
-        self.tv_weight = self.conf.get_float('train.tv_weight', default=0.001)  # no use
-        self.visibility_beta = self.conf.get_float('train.visibility_beta', default=0.025)
-        self.visibility_gama = self.conf.get_float('train.visibility_gama', default=0.015)
-        self.visibility_penalize_ratio = self.conf.get_float('train.visibility_penalize_ratio', default=0.8)
-        self.visibility_weight_thred = self.conf.get_list('train.visibility_weight_thred', default=[0.7])
-        self.if_visibility_aware = self.conf.get_bool('train.if_visibility_aware', default=True)
+        self.mask_weight = self.conf.get_float('train.mask_weight', default=0.0)
+        # self.tv_weight = self.conf.get_float('train.tv_weight', default=0.001)  # no use
+        # self.visibility_beta = self.conf.get_float('train.visibility_beta', default=0.025)
+        # self.visibility_gama = self.conf.get_float('train.visibility_gama', default=0.015)
+        # self.visibility_penalize_ratio = self.conf.get_float('train.visibility_penalize_ratio', default=0.8)
+        # self.visibility_weight_thred = self.conf.get_list('train.visibility_weight_thred', default=[0.7])
+        # self.if_visibility_aware = self.conf.get_bool('train.if_visibility_aware', default=True)
         self.train_from_scratch = self.conf.get_bool('train.train_from_scratch', default=False)
 
-        self.depth_criterion = DepthLoss()
-        self.depth_smooth_criterion = DepthSmoothLoss()
-        self.occlusion_color_criterion = OcclusionColorLoss(beta=self.visibility_beta,
-                                                            gama=self.visibility_gama,
-                                                            weight_thred=self.visibility_weight_thred,
-                                                            occlusion_aware=self.if_visibility_aware)
-        self.occlusion_color_patch_criterion = OcclusionColorPatchLoss(
-            type=self.conf.get_string('train.patch_loss_type', default='ncc'),
-            h_patch_size=self.conf.get_int('model.h_patch_size', default=5),
-            beta=self.visibility_beta, gama=self.visibility_gama,
-            weight_thred=self.visibility_weight_thred,
-            occlusion_aware=self.if_visibility_aware
-        )
+        self.pixel_color_loss = PixelColorLoss()
+        self.patch_color_loss = PatchColorLoss()
+        self.mask_loss = AccMaskLoss()
 
         # self.iter_step = 0
         self.val_mesh_freq = self.conf.get_int('train.val_mesh_freq')
-
-        # - True if fine-tuning
-        self.if_fitted_rendering = self.conf.get_bool('train.if_fitted_rendering', default=False)
 
     def get_trainable_params(self):
         # set trainable params
@@ -338,19 +325,13 @@ class FinetuneTrainer(nn.Module):
             rays_uv=rays_ndc_uv if self.color_patch_weight > 0 else None,
         )
 
-        # * optional TV regularizer, we don't use in this paper
-        if self.tv_weight > 0:
-            tv = self.sdf_network_finetune.tv_regularizer()
-        else:
-            tv = 0.0
-        render_out['tv'] = tv
-        loss_lod0, losses_lod0, depth_statis_lod0 = self.cal_losses_sdf(render_out, sample_rays, iter_step)
+
+        loss_lod0, losses_lod0 = self.cal_losses_sdf(render_out, sample_rays, iter_step)
 
         losses = {
             # - lod 0
             'loss_lod0': loss_lod0,
             'losses_lod0': losses_lod0,
-            'depth_statis_lod0': depth_statis_lod0,
         }
 
         return losses
@@ -483,18 +464,18 @@ class FinetuneTrainer(nn.Module):
                                     depth_min, depth_max, iter_step, meta, "val_lod0",
                                     out_color_mlp=out_rgb_mlp)
 
-        # - extract mesh
-        if (iter_step % self.val_mesh_freq == 0):
-            torch.cuda.empty_cache()
-            self.validate_mesh(self.sdf_network_finetune,
-                               self.sdf_renderer_finetune.extract_geometry,
-                               conditional_volume=con_volume_lod0, lod=0,
-                               threshold=0,
-                               occupancy_mask=con_valid_mask_volume_lod0[0, 0],
-                               mode='val', meta=meta,
-                               iter_step=iter_step, scale_mat=scale_mat, trans_mat=trans_mat)
+        # # - extract mesh
+        # if (iter_step % self.val_mesh_freq == 0):
+        #     torch.cuda.empty_cache()
+        #     self.validate_mesh(self.sdf_network_finetune,
+        #                        self.sdf_renderer_finetune.extract_geometry,
+        #                        conditional_volume=con_volume_lod0, lod=0,
+        #                        threshold=0,
+        #                        occupancy_mask=con_valid_mask_volume_lod0[0, 0],
+        #                        mode='val', meta=meta,
+        #                        iter_step=iter_step, scale_mat=scale_mat, trans_mat=trans_mat)
 
-            torch.cuda.empty_cache()
+        #     torch.cuda.empty_cache()
 
     def save_visualization(self, true_img, true_colored_depth, out_depth, out_normal, w2cs, out_color, H, W,
                            depth_min, depth_max, iter_step, meta, comment, out_color_mlp=[]):
@@ -625,64 +606,51 @@ class FinetuneTrainer(nn.Module):
         cdf_fine = render_out['cdf_fine']
         weight_sum = render_out['weights_sum']
 
-        if self.train_from_scratch:
-            occlusion_aware = False if iter_step < 5000 else True
-        else:
-            occlusion_aware = True
-
         gradient_error_fine = render_out['gradient_error_fine']
 
         sdf = render_out['sdf']
+        
+        
+        # mask loss
+        mask_loss = self.mask_loss(weight_sum, mask)
 
         # * color generated by mlp
         color_mlp = render_out['color_mlp']
         color_mlp_mask = render_out['color_mlp_mask']
 
+        mask = mask[...,0]>0
         if color_mlp is not None:
             # Color loss
-            color_mlp_mask = color_mlp_mask[..., 0]
+            # color_mlp_mask = color_mlp_mask[..., 0]
 
-            color_mlp_loss, color_mlp_error = self.occlusion_color_criterion(pred=color_mlp, gt=true_rgb,
-                                                                             weight=weight_sum.squeeze(),
-                                                                             mask=color_mlp_mask,
-                                                                             occlusion_aware=occlusion_aware)
+            color_mlp_loss = self.pixel_color_loss(pred=color_mlp, gt=true_rgb, mask=mask)
 
             psnr_mlp = 20.0 * torch.log10(
-                1.0 / (((color_mlp[color_mlp_mask] - true_rgb[color_mlp_mask]) ** 2).mean() / (3.0)).sqrt())
+                1.0 / (((color_mlp[mask] - true_rgb[mask]) ** 2).mean() / (3.0)).sqrt())
         else:
             color_mlp_loss = 0.
             psnr_mlp = 0.
 
         # - blended patch loss
         blended_color_patch = render_out['blended_color_patch']  # [N_pts, Npx, 3]
-        blended_color_patch_mask = render_out['blended_color_patch_mask']  # [N_pts, 1]
+        # blended_color_patch_mask = render_out['blended_color_patch_mask']  # [N_pts, 1]
         color_patch_loss = 0.0
-        color_patch_error = 0.0
-        visibility_beta = 0.0
+
         if blended_color_patch is not None:
             rays_patch_color = sample_rays['rays_patch_color'][0]
             rays_patch_mask = sample_rays['rays_patch_mask'][0]
-            patch_mask = (rays_patch_mask * blended_color_patch_mask).float()[:, 0] > 0  # [N_pts]
+            patch_mask = (rays_patch_mask[:, 0] * mask).float() > 0  # [N_pts]
 
-            color_patch_loss, color_patch_error, visibility_beta = self.occlusion_color_patch_criterion(
-                blended_color_patch,
-                rays_patch_color,
-                weight=weight_sum.squeeze(),
+            color_patch_loss = self.patch_color_loss(
+                pred=blended_color_patch,
+                gt=rays_patch_color,
                 mask=patch_mask,
-                penalize_ratio=self.visibility_penalize_ratio,
-                occlusion_aware=occlusion_aware
             )
 
         if true_depth is not None:
             depth_loss = self.depth_criterion(depth_pred, true_depth, mask)
-
-            # depth evaluation
-            depth_statis = compute_depth_errors(depth_pred.detach().cpu().numpy(), true_depth.cpu().numpy(),
-                                                mask.cpu().numpy() > 0)
-            depth_statis = numpy2tensor(depth_statis, device=rays_o.device)
         else:
             depth_loss = 0.
-            depth_statis = None
 
         # - if without sparse_loss, the mean sdf is 0.02.
         # - use sparse_loss to prevent occluded pts have 0 sdf
@@ -697,21 +665,16 @@ class FinetuneTrainer(nn.Module):
         # Eikonal loss
         gradient_error_loss = gradient_error_fine
 
-        # * optional TV regularizer
-        if 'tv' in render_out.keys():
-            tv = render_out['tv']
-        else:
-            tv = 0.0
-
         loss = color_mlp_loss + \
                color_patch_loss * self.color_patch_weight + \
                sparse_loss * get_weight(iter_step, self.sdf_sparse_weight) + \
-               gradient_error_loss * self.sdf_igr_weight
+               gradient_error_loss * self.sdf_igr_weight + mask_loss * self.mask_weight
 
         losses = {
             "loss": loss,
             "depth_loss": depth_loss,
-            "color_mlp_loss": color_mlp_error,
+            "color_mlp_loss": color_mlp_loss,
+            "color_patch_loss": color_patch_loss,
             "gradient_error_loss": gradient_error_loss,
             "sparse_loss": sparse_loss,
             "sparseness_1": sparseness_1,
@@ -722,14 +685,12 @@ class FinetuneTrainer(nn.Module):
             "alpha_sum": render_out['alpha_sum'],
             "variance": render_out['variance'],
             "sparse_weight": get_weight(iter_step, self.sdf_sparse_weight),
-            'color_patch_loss': color_patch_error,
-            'visibility_beta': visibility_beta,
-            'tv': tv,
+            "mask_loss": mask_loss
         }
 
         losses = numpy2tensor(losses, device=rays_o.device)
 
-        return loss, losses, depth_statis
+        return loss, losses
 
     def validate_mesh(self, sdf_network, func_extract_geometry, world_space=True, resolution=512,
                       threshold=0.0, mode='val',
@@ -760,6 +721,7 @@ class FinetuneTrainer(nn.Module):
             vertices = np.matmul(trans_mat_np, vertices_homo[:, :, None])[:, :3, 0]
 
         mesh = trimesh.Trimesh(vertices, triangles)
+        
         os.makedirs(os.path.join(self.base_exp_dir, 'meshes_' + mode), exist_ok=True)
         mesh.export(os.path.join(self.base_exp_dir, 'meshes_' + mode,
                                  'mesh_{:0>8d}_{}_lod{:0>1d}.ply'.format(iter_step, meta, lod)))

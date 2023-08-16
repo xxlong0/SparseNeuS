@@ -262,9 +262,6 @@ class Runner:
                     self.writer.add_scalar('Loss/loss', loss, self.iter_step)
 
                     if losses_lod0 is not None:
-                        self.writer.add_scalar('Loss/d_loss_lod0',
-                                               losses_lod0['depth_loss'].mean() if losses_lod0 is not None else 0,
-                                               self.iter_step)
                         self.writer.add_scalar('Loss/sparse_loss_lod0',
                                                losses_lod0[
                                                    'sparse_loss'].mean() if losses_lod0 is not None else 0,
@@ -285,9 +282,6 @@ class Runner:
 
                     ######## - lod 1
                     if self.num_lods > 1:
-                        self.writer.add_scalar('Loss/d_loss_lod1',
-                                               losses_lod1['depth_loss'].mean() if losses_lod1 is not None else 0,
-                                               self.iter_step)
                         self.writer.add_scalar('Loss/sparse_loss_lod1',
                                                losses_lod1[
                                                    'sparse_loss'].mean() if losses_lod1 is not None else 0,
@@ -319,17 +313,13 @@ class Runner:
                     print(
                         'iter:{:8>d} '
                         'loss = {:.4f} '
-                        'd_loss_lod0 = {:.4f} '
                         'color_loss_lod0 = {:.4f} '
                         'sparse_loss_lod0= {:.4f} '
-                        'd_loss_lod1 = {:.4f} '
                         'color_loss_lod1 = {:.4f} '
                         '  lr = {:.5f}'.format(
                             self.iter_step, loss,
-                            losses_lod0['depth_loss'].mean() if losses_lod0 is not None else 0,
                             losses_lod0['color_fine_loss'].mean() if losses_lod0 is not None else 0,
                             losses_lod0['sparse_loss'].mean() if losses_lod0 is not None else 0,
-                            losses_lod1['depth_loss'].mean() if losses_lod1 is not None else 0,
                             losses_lod1['color_fine_loss'].mean() if losses_lod1 is not None else 0,
                             self.optimizer.param_groups[0]['lr']))
 

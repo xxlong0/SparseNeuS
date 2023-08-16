@@ -327,9 +327,6 @@ class Runner:
                     self.writer.add_scalar('Loss/loss', loss, self.iter_step)
 
                     if losses_lod0 is not None:
-                        self.writer.add_scalar('Loss/d_loss',
-                                               losses_lod0['depth_loss'].mean() if losses_lod0 is not None else 0,
-                                               self.iter_step)
                         self.writer.add_scalar('Loss/sparse_loss',
                                                losses_lod0[
                                                    'sparse_loss'].mean() if losses_lod0 is not None else 0,
@@ -349,12 +346,14 @@ class Runner:
                         'loss = {:.4f} '
                         'color_loss = {:.4f} '
                         'sparse_loss= {:.4f} '
-                        'color_patch_loss = {:.4f}'
+                        'color_patch_loss = {:.4f} '
+                        'mask_loss = {:.4f}'
                         '  lr = {:.5f}'.format(
                             self.iter_step, loss,
-                            losses_lod0['color_mlp_loss'].mean() if losses_lod0 is not None else 0,
-                            losses_lod0['sparse_loss'].mean() if losses_lod0 is not None else 0,
+                            losses_lod0['color_mlp_loss'].mean() ,
+                            losses_lod0['sparse_loss'].mean(),
                             losses_lod0['color_patch_loss'].mean(),
+                            losses_lod0['mask_loss'].mean(),
                             self.optimizer.param_groups[0]['lr']))
 
                     if losses_lod0 is not None:
@@ -371,7 +370,6 @@ class Runner:
                             ))
 
                     ic(losses_lod0['variance'])
-                    ic(losses_lod0['visibility_beta'])
 
                 if self.iter_step % self.save_freq == 0 and self.iter_step > 5000:
                     self.save_checkpoint()
@@ -386,7 +384,6 @@ class Runner:
 
         # the geometric part slow training in the early stage
         warmup_start = 500
-        warmup_end = 1000
 
         end = self.end_iter * 0.9
         if self.iter_step < warmup_start:
@@ -524,10 +521,10 @@ class Runner:
             idx = self.val_step
         self.val_step += 1
         try:
-            batch = self.test_dataloader_iterator.next()
+            batch = next(self.test_dataloader_iterator)
         except:
             self.test_dataloader_iterator = iter(self.test_dataloader)  # reset
-            batch = self.test_dataloader_iterator.next()
+            batch = next(self.test_dataloader_iterator)
 
         background_rgb = None
         if self.use_white_bkgd:

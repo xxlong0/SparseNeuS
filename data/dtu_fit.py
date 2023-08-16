@@ -70,6 +70,7 @@ class DtuFit:
 
         camera_dict = np.load(os.path.join(self.data_dir, 'cameras.npz'), allow_pickle=True)
         self.images_list = sorted(glob(os.path.join(self.data_dir, "image/*.png")))
+        self.masks_list = sorted(glob(os.path.join(self.data_dir, "mask/*.png")))
         # world_mat: projection matrix: world to image
         self.world_mats_np = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in
                               range(len(self.images_list))]
@@ -84,6 +85,7 @@ class DtuFit:
         self.all_images = []
         self.all_intrinsics = []
         self.all_w2cs = []
+        self.all_masks = []
 
         self.load_scene()  # load the scene
 
@@ -112,11 +114,20 @@ class DtuFit:
 
         for idx in range(len(self.images_list)):
             image = cv.imread(self.images_list[idx])
+            mask = cv.imread(self.masks_list[idx], -1)[:, :, 3]
+            
             image = cv.resize(image, (self.img_wh[0], self.img_wh[1])) / 255.
-
             image = image[self.clip_wh[1]:self.img_wh[1] - self.clip_wh[3],
                     self.clip_wh[0]:self.img_wh[0] - self.clip_wh[2]]
+            
+            
+            mask = cv.resize(mask, (self.img_wh[0], self.img_wh[1])) / 255.
+            mask = mask[self.clip_wh[1]:self.img_wh[1] - self.clip_wh[3],
+                    self.clip_wh[0]:self.img_wh[0] - self.clip_wh[2]]
+            mask = mask > 0.5
+            
             self.all_images.append(np.transpose(image[:, :, ::-1], (2, 0, 1)))
+            self.all_masks.append(mask)
 
             P = self.world_mats_np[idx]
             P = P[:3, :4]
@@ -136,6 +147,7 @@ class DtuFit:
         self.all_images = torch.from_numpy(np.stack(self.all_images)).to(torch.float32)
         self.all_intrinsics = torch.from_numpy(np.stack(self.all_intrinsics)).to(torch.float32)
         self.all_w2cs = torch.from_numpy(np.stack(self.all_w2cs)).to(torch.float32)
+        self.all_masks = torch.from_numpy(np.stack(self.all_masks)).to(torch.float32)
         self.img_wh = [self.img_wh[0] - self.clip_wh[0] - self.clip_wh[2],
                        self.img_wh[1] - self.clip_wh[1] - self.clip_wh[3]]
 
@@ -239,6 +251,7 @@ class DtuFit:
 
         # - query image
         sample['query_image'] = self.all_images[render_idx]
+        sample['query_mask'] = self.all_masks[render_idx]
         sample['query_c2w'] = self.scaled_c2ws[render_idx]
         sample['query_w2c'] = self.scaled_w2cs[render_idx]
         sample['query_intrinsic'] = self.scaled_intrinsics[render_idx]
@@ -257,7 +270,7 @@ class DtuFit:
                 sample['query_intrinsic'],
                 sample['query_c2w'],
                 depth=None,
-                mask=None)
+                mask=sample['query_mask'])
         else:
             sample_rays = gen_random_rays_from_single_image(
                 self.img_wh[1], self.img_wh[0],
@@ -266,7 +279,7 @@ class DtuFit:
                 sample['query_intrinsic'],
                 sample['query_c2w'],
                 depth=None,
-                mask=None,
+                mask=sample['query_mask'],
                 dilated_mask=None,
                 importance_sample=False,
                 h_patch_size=self.h_patch_size

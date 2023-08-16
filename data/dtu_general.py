@@ -164,18 +164,6 @@ class MVSDatasetDtuPerView(Dataset):
             self.all_extrinsics.append(extrinsic)
             self.all_near_fars.append(near_far)
 
-    def read_depth(self, filename):
-        depth_h = np.array(read_pfm(filename)[0], dtype=np.float32)  # (1200, 1600)
-        depth_h = cv2.resize(depth_h, None, fx=0.5, fy=0.5,
-                             interpolation=cv2.INTER_NEAREST)  # (600, 800)
-        depth_h = depth_h[44:556, 80:720]  # (512, 640)
-        depth_h = cv2.resize(depth_h, None, fx=self.downSample, fy=self.downSample,
-                             interpolation=cv2.INTER_NEAREST)
-        depth = cv2.resize(depth_h, None, fx=1.0 / 4, fy=1.0 / 4,
-                           interpolation=cv2.INTER_NEAREST)
-
-        return depth, depth_h
-
     def read_mask(self, filename):
         mask_h = cv2.imread(filename, 0)
         mask_h = cv2.resize(mask_h, None, fx=self.downSample, fy=self.downSample,
@@ -212,15 +200,14 @@ class MVSDatasetDtuPerView(Dataset):
 
         image_perm = 0  # only supervised on reference view
 
-        imgs, depths_h, masks_h = [], [], []  # full size (640, 512)
+        imgs, masks_h = [], [] # full size (640, 512)
         intrinsics, w2cs, near_fars = [], [], []  # record proj mats between views
         mask_dilated = None
         for i, vid in enumerate(view_ids):
             # NOTE that the id in image file names is from 1 to 49 (not 0~48)
             img_filename = os.path.join(self.root_dir,
                                         f'Rectified/{scan}_train/rect_{vid + 1:03d}_{light_idx}_r5000.png')
-            depth_filename = os.path.join(self.root_dir,
-                                          f'Depths_raw/{scan}/depth_map_{vid:04d}.pfm')
+
             mask_filename = os.path.join(self.root_dir,
                                          f'Masks/{scan}_train/mask_{vid:04d}.png')
 
@@ -254,9 +241,6 @@ class MVSDatasetDtuPerView(Dataset):
 
             w2cs.append(self.all_extrinsics[index_mat] @ w2c_ref_inv)
 
-            if os.path.exists(depth_filename):  # and i == 0
-                depth_l, depth_h = self.read_depth(depth_filename)
-                depths_h.append(depth_h)
 
         # ! estimate scale_mat
         scale_mat, scale_factor = self.cal_scale_mat(img_hw=[img_wh[1], img_wh[0]],
@@ -268,8 +252,8 @@ class MVSDatasetDtuPerView(Dataset):
         new_w2cs = []
         new_c2ws = []
         new_affine_mats = []
-        new_depths_h = []
-        for intrinsic, extrinsic, near_far, depth in zip(intrinsics, w2cs, near_fars, depths_h):
+
+        for intrinsic, extrinsic, near_far in zip(intrinsics, w2cs, near_fars):
             P = intrinsic @ extrinsic @ scale_mat
             P = P[:3, :4]
             # - should use load_K_Rt_from_P() to obtain c2w
@@ -287,10 +271,9 @@ class MVSDatasetDtuPerView(Dataset):
             far = dist + 1
 
             new_near_fars.append([0.95 * near, 1.05 * far])
-            new_depths_h.append(depth * scale_factor)
+
 
         imgs = torch.stack(imgs).float()
-        depths_h = np.stack(new_depths_h)
         masks_h = np.stack(masks_h)
 
         affine_mats = np.stack(new_affine_mats)
@@ -303,7 +286,6 @@ class MVSDatasetDtuPerView(Dataset):
             start_idx = 1
 
         sample['images'] = imgs  # (V, 3, H, W)
-        sample['depths_h'] = torch.from_numpy(depths_h.astype(np.float32))  # (V, H, W)
         sample['masks_h'] = torch.from_numpy(masks_h.astype(np.float32))  # (V, H, W)
         sample['w2cs'] = torch.from_numpy(w2cs.astype(np.float32))  # (V, 4, 4)
         sample['c2ws'] = torch.from_numpy(c2ws.astype(np.float32))  # (V, 4, 4)
@@ -326,12 +308,10 @@ class MVSDatasetDtuPerView(Dataset):
         sample['query_c2w'] = sample['c2ws'][0]
         sample['query_w2c'] = sample['w2cs'][0]
         sample['query_intrinsic'] = sample['intrinsics'][0]
-        sample['query_depth'] = sample['depths_h'][0]
         sample['query_mask'] = sample['masks_h'][0]
         sample['query_near_far'] = sample['near_fars'][0]
 
         sample['images'] = sample['images'][start_idx:]  # (V, 3, H, W)
-        sample['depths_h'] = sample['depths_h'][start_idx:]  # (V, H, W)
         sample['masks_h'] = sample['masks_h'][start_idx:]  # (V, H, W)
         sample['w2cs'] = sample['w2cs'][start_idx:]  # (V, 4, 4)
         sample['c2ws'] = sample['c2ws'][start_idx:]  # (V, 4, 4)
@@ -349,7 +329,7 @@ class MVSDatasetDtuPerView(Dataset):
                 sample['query_image'],
                 sample['query_intrinsic'],
                 sample['query_c2w'],
-                depth=sample['query_depth'],
+                depth=None,
                 mask=sample['query_mask'] if self.clean_image else None)
         else:
             sample_rays = gen_random_rays_from_single_image(
@@ -358,7 +338,7 @@ class MVSDatasetDtuPerView(Dataset):
                 sample['query_image'],
                 sample['query_intrinsic'],
                 sample['query_c2w'],
-                depth=sample['query_depth'],
+                depth=None,
                 mask=sample['query_mask'] if self.clean_image else None,
                 dilated_mask=mask_dilated,
                 importance_sample=self.importance_sample)

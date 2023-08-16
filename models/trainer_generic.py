@@ -110,13 +110,11 @@ class GenericTrainer(nn.Module):
         self.if_fix_lod0_networks = self.conf.get_bool('train.if_fix_lod0_networks')
 
         # sdf network weights
-        self.sdf_igr_weight = self.conf.get_float('train.sdf_igr_weight')
+        self.sdf_igr_weight = self.conf.get_float('train.prune_depth_filterdepsdf_igr_weight')
         self.sdf_sparse_weight = self.conf.get_float('train.sdf_sparse_weight', default=0)
         self.sdf_decay_param = self.conf.get_float('train.sdf_decay_param', default=100)
         self.fg_bg_weight = self.conf.get_float('train.fg_bg_weight', default=0.00)
         self.bg_ratio = self.conf.get_float('train.bg_ratio', default=0.0)
-
-        self.depth_criterion = DepthLoss()
 
         # - DataParallel mode, cannot modify attributes in forward()
         # self.iter_step = 0
@@ -252,7 +250,7 @@ class GenericTrainer(nn.Module):
                 if_render_with_grad=True,
             )
 
-            loss_lod0, losses_lod0, depth_statis_lod0 = self.cal_losses_sdf(render_out, sample_rays,
+            loss_lod0, losses_lod0 = self.cal_losses_sdf(render_out, sample_rays,
                                                                                      iter_step, lod=0)
 
         # ***********************     Lod==1     ***********************
@@ -796,14 +794,8 @@ class GenericTrainer(nn.Module):
         # depth loss is only used for inference, not included in total loss
         if true_depth is not None:
             depth_loss = self.depth_criterion(depth_pred, true_depth, mask)
-
-            # depth evaluation
-            depth_statis = compute_depth_errors(depth_pred.detach().cpu().numpy(), true_depth.cpu().numpy(),
-                                                mask.cpu().numpy() > 0)
-            depth_statis = numpy2tensor(depth_statis, device=rays_o.device)
         else:
             depth_loss = 0.
-            depth_statis = None
 
         sparse_loss_1 = torch.exp(
             -1 * torch.abs(render_out['sdf_random']) * self.sdf_decay_param).mean()  # - should equal
@@ -859,7 +851,7 @@ class GenericTrainer(nn.Module):
         }
 
         losses = numpy2tensor(losses, device=rays_o.device)
-        return loss, losses, depth_statis
+        return loss, losses
 
     def validate_mesh(self, density_or_sdf_network, func_extract_geometry, world_space=True, resolution=360,
                       threshold=0.0, mode='val',
