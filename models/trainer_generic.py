@@ -110,7 +110,7 @@ class GenericTrainer(nn.Module):
         self.if_fix_lod0_networks = self.conf.get_bool('train.if_fix_lod0_networks')
 
         # sdf network weights
-        self.sdf_igr_weight = self.conf.get_float('train.prune_depth_filterdepsdf_igr_weight')
+        self.sdf_igr_weight = self.conf.get_float('train.sdf_igr_weight')
         self.sdf_sparse_weight = self.conf.get_float('train.sdf_sparse_weight', default=0)
         self.sdf_decay_param = self.conf.get_float('train.sdf_decay_param', default=100)
         self.fg_bg_weight = self.conf.get_float('train.fg_bg_weight', default=0.00)
