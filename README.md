@@ -63,12 +63,14 @@ You can download the [DTU results](https://connecthkuhk-my.sharepoint.com/:f:/g/
 Cite as below if you find this repository is helpful to your project:
 
 ```
-@article{long2022sparseneus,
-          title={SparseNeuS: Fast Generalizable Neural Surface Reconstruction from Sparse views},
-          author={Long, Xiaoxiao and Lin, Cheng and Wang, Peng and Komura, Taku and Wang, Wenping},
-          journal={ECCV},
-          year={2022}
-        }
+@inproceedings{long2022sparseneus,
+  title={Sparseneus: Fast generalizable neural surface reconstruction from sparse views},
+  author={Long, Xiaoxiao and Lin, Cheng and Wang, Peng and Komura, Taku and Wang, Wenping},
+  booktitle={European Conference on Computer Vision},
+  pages={210--227},
+  year={2022},
+  organization={Springer}
+}
 ```
 
 ## Acknowledgement
